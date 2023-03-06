@@ -1,0 +1,279 @@
+---
+title: "Plotting the bacterial colony counts and qPCR quantification"
+subtitle: "Bacterial colony counts and qPCR quantification"
+author: "Angel Roey and Nweze Julius"
+date: "`r Sys.Date()`"
+link-citations: yes
+csl: fems-microbiology-ecology.csl
+output:
+  rmarkdown::html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 5
+    keep_md: true
+    number_sections: false
+    highlight: "pygments"
+    theme: "flatly"
+    dev: "png"
+    df_print: "kable"
+    fig_caption: true
+    code_folding: "show"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r libraries, message=FALSE}
+# Load libraries
+#.libPaths(c('~/R/library', .libPaths())) # Uncomment if you have no write access to R path
+
+repo <- "http://cran.wu.ac.at"
+lib.loc <- Sys.getenv("R_LIBS_USER")
+
+update.packages(
+    lib.loc, 
+    repos = repo,
+    ask = FALSE
+)
+
+.cran_libs <- c(
+  "knitr", # A General-Purpose Package for Dynamic Report Generation in R
+  "kableExtra", # Construct Complex Table with 'kable' and Pipe Syntax
+  "rmarkdown", # Dynamic Documents for R
+  "extrafont", # for extra figure fonts
+  "tidyverse", # for dplyr forcats ggplot2 readr tibble
+  "grid", # The Grid Graphics Package
+  "magrittr", # pipes
+  "scales", # Generic plot scaling methods
+  "svglite", # for svg files
+  "vegan",
+  "egg",
+  "viridis",
+  "reshape2",
+  "ggdendro",
+  "compare",
+  "ggnewscale",
+  "arsenal",
+  "RColorBrewer",
+  "ggridges",
+  "cowplot",
+  "lubridate",
+  "sunburstR",
+  "forcats",
+  "readODS",
+  "ggplot2", # for barplot
+  "ggpubr",
+  "car", # Companion to Applied Regression
+  "rcompanion", #Functions to Support Extension Education Program Evaluation
+  "multcomp", # Simultaneous Inference in General Parametric Models 
+  "nlme", # Fit Linear Model Using Generalized Least Squares
+  "ggResidpanel", # Panels and Interactive Versions of Diagnostic Plots using 
+  "lsmeans", # Least-Squares Means
+  "hrbrthemes"
+  
+) 
+
+.inst <- .cran_libs %in% installed.packages()
+if (any(!.inst)) {
+   install.packages(.cran_libs[!.inst],
+                    repos = repo,
+                    lib = lib.loc)
+}
+
+.bioc_libs <- c(
+  #"multtest", #Resampling-based multiple hypothesis testing
+)
+
+.bioc_inst <- .bioc_libs %in% installed.packages()
+if (any(!.bioc_inst)) {
+   if (!requireNamespace("BiocManager", quietly = TRUE))
+   install.packages("BiocManager")
+   BiocManager::install(ask = F, lib = lib.loc)  # upgrade bioC packages
+   BiocManager::install(.bioc_libs[!.bioc_inst], ask = F, lib = lib.loc)
+}
+
+.local_libs <- c()
+
+.inst <- names(.local_libs) %in% installed.packages()
+if (any(!.inst)) {
+   install.packages(paste0("~/R/", .local_libs[!.inst]) ,repos = NULL, type = "source", lib = lib.loc)
+}
+
+.github_libs <- c()
+
+.github_lib_names <- stringr::str_replace(.github_libs, ".*/(.*)$", "\\1")
+
+.github_inst <- .github_lib_names %in% installed.packages()
+if (any(!.github_inst)) {
+  devtools::install_github(.github_libs[!.github_inst],
+                           lib = lib.loc,
+                           dependencies = TRUE)
+}
+
+# Load packages into session, and print package version
+
+(loaded.libs <- sapply(c(.cran_libs, .bioc_libs, names(.local_libs), .github_lib_names), require, character.only = TRUE))
+if (!all(loaded.libs)) {stop(paste("Package(s):", names(loaded.libs[loaded.libs == FALSE]), "could not be loaded"))}
+sapply(c(.cran_libs, .bioc_libs, names(.local_libs), .github_lib_names), packageVersion)
+```
+
+```{r scientific style settings, include=F}
+scientific_10 <- function(x) {
+  parse(text=gsub("e", " %*% 10^", scales::scientific_format()(x))) #Simply by adding a parse() to the scientific_10() function (and changing 'x' to the correct 'times' symbol)
+}  
+
+scientific_10 <- function(x,suppress_ones=TRUE) {
+    s <- scales::scientific_format()(x)
+    ## substitute for exact zeros
+    s[s=="0e+00"] <- "0"
+    ## regex: [+]?  = "zero or one occurrences of '+'"
+    s2 <- gsub("e[+]?", " %*% 10^", s )
+    ## suppress 1 x
+    if (suppress_ones) s2 <- gsub("1 %\\*% +","",s2)
+    parse(text=s2)
+}
+###
+```
+
+
+```{r style settings, include=F}
+options(width = 90, knitr.table.format = "html") 
+opts_chunk$set(
+  warning = FALSE,
+  message = FALSE,
+  cache = TRUE,
+  dev = "svglite",
+  fig.ext = "svg",
+  dpi = 300,
+#  fig.width = 12,
+#  fig.height = 8,
+  cache.path = "Weight_loss_cache/",
+  fig.path = "Weight_loss_figs/"
+)
+f_name <- "DejaVu Sans" #sub("\\s//", "", f_name)
+f_size <- 14
+font_import(pattern = "DejaVuSans", prompt = FALSE)
+loadfonts() # registers fonts
+theme_set(theme_bw(base_size = f_size, base_family = f_name)) # set theme for plots
+pom4 <- ggpomological:::pomological_palette[c(2, 9, 3, 1)] # set colours
+```
+
+
+[roey.angel@bc.cas.cz](mailto: roey.angel@bc.cas.cz) 
+[julius.nweze@bc.cas.cz](mailto: julius.nweze@bc.cas.cz) 
+
+
+# Species tested: *E. pulchripes* and *G. connexa*.
+
+**Load data **
+```{r load E. pulchripes and G. connexa data, echo=FALSE, cache=FALSE}
+read_ods("Control_qQPCR_ColonyC.ods", sheet = "Sheet1", col_names = TRUE)  -> # load the data
+Counts
+```
+
+
+**Mean copies for colony counts**
+```{r load plotting Mean copies data, echo=FALSE, cache=FALSE}
+
+# Mean copies for colonies
+Counts %>%  # the name of the new data frame and the data frame to be summarised
+drop_na() %>% # drop rows with missing values
+group_by(`Sample type`, Species) %>%   # the grouping variable
+summarise(`Mean colonies per pellet` = mean(`Colonies per pellet`),  # calculates the mean of each group
+  StD = sd(`Colonies per pellet`), # calculates the standard deviation of each group
+  n = n(),  # calculates the sample size per group
+  SE = sd(`Colonies per pellet`)/sqrt(n())) -> # calculates the standard error of each group
+Total_mean_colonies
+
+# Make a mean table
+Total_mean_colonies %>% # output a table of group means
+kable(., digits = c(0, 1, 1, 1, 0, 1)) %>%
+kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F)
+ 
+
+# Create plot
+ggplot(Total_mean_colonies, aes(x = Species, y = `Mean colonies per pellet`)) +
+geom_bar(stat = 'identity', position='dodge', colour = "black", fill = "#1b9e77") +
+geom_errorbar(aes(ymin = `Mean colonies per pellet` - SE, ymax = `Mean colonies per pellet` + SE), width=.2, position=position_dodge(.9))  + 
+theme(legend.position="none", axis.text.x = element_text(face = "italic")) + scale_y_continuous(label=scientific_10) +
+theme(axis.text = element_text(size = 28, colour = "black"), axis.title=element_text(size=35, colour = "black")) 
+```
+
+
+**Mean copies for  Total copy numbers of 16S rRNA**
+```{r load plotting Mean copies for the total copy numbers of 16S rRNA data, echo=FALSE, cache=FALSE}
+
+# # Mean copies for  Total copy numbers of 16S rRNA
+Counts %>%  # the name of the new data frame and the data frame to be summarised
+#  drop_na() %>% # drop rows with missing values
+group_by(`Sample type`, Species) %>%   # the grouping variable
+summarise(`Mean total copy numbers of 16S rRNA` = mean(`Total copy numbers of 16S rRNA`),  # calculates the mean of each group
+  StD = sd(`Total copy numbers of 16S rRNA`), # calculates the standard deviation of each group
+  n = n(),  # calculates the sample size per group
+  SE = sd(`Total copy numbers of 16S rRNA`)/sqrt(n())) -> # calculates the standard error of each group
+Total_mean_TCN
+
+# Make a mean table  
+Total_mean_TCN %>% # output a table of group means
+kable(., digits = c(0, 1, 1, 1, 0, 1)) %>%
+kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F)
+
+# Create plot
+ggplot(Total_mean_TCN, aes(x = Species, y = `Mean total copy numbers of 16S rRNA`, fill = `Sample type`)) +
+geom_bar(stat = 'identity', position='dodge', colour = "black") + scale_fill_brewer(palette="Dark2") +
+geom_errorbar(aes(ymin = `Mean total copy numbers of 16S rRNA` - SE, ymax = `Mean total copy numbers of 16S rRNA` + SE), width=.2, position=position_dodge(.9))  + 
+theme(legend.position="top", legend.text = element_text(colour="black", size = 24), legend.title = element_text(colour="black", size = 28), axis.text.x = element_text(face = "italic")) + scale_y_continuous(label=scientific_10) +
+theme(axis.text = element_text(size = 28, colour = "black"), axis.title=element_text(size=30, colour = "black")) 
+```
+
+**Mean copies for  16S rRNA copies/1 ng DNA**
+```{r load plotting Mean copies for  16S rRNA copies/1 ng DNAdata, echo=FALSE, cache=FALSE}
+
+# # Mean copies for  16S rRNA copies/1 ng DNA
+Counts %>%  # the name of the new data frame and the data frame to be summarised
+#  drop_na() %>% # drop rows with missing values
+group_by(`Sample type`, Species) %>%   # the grouping variable
+summarise(`Mean 16S rRNA copies/1 ng DNA` = mean(`16S rRNA copies/1 ng DNA`),  # calculates the mean of each group
+  StD = sd(`16S rRNA copies/1 ng DNA`), # calculates the standard deviation of each group
+  n = n(),  # calculates the sample size per group
+  SE = sd(`16S rRNA copies/1 ng DNA`)/sqrt(n())) -> # calculates the standard error of each group
+Total_mean_copiesDNA  
+  
+# Make a mean table 
+Total_mean_copiesDNA %>% # output a table of group means
+kable(., digits = c(0, 1, 1, 1, 0, 1)) %>%
+kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F)
+ 
+# Create plot
+ggplot(Total_mean_copiesDNA, aes(x = Species, y = `Mean 16S rRNA copies/1 ng DNA`, fill = `Sample type`)) +
+geom_bar(stat = 'identity', position='dodge', colour = "black") + scale_fill_brewer(palette="Dark2") +
+geom_errorbar(aes(ymin = `Mean 16S rRNA copies/1 ng DNA` - SE, ymax = `Mean 16S rRNA copies/1 ng DNA` + SE), width=.2, position=position_dodge(.9))  + 
+theme(legend.position="top", legend.text = element_text(colour="black", size = 24), legend.title = element_text(colour="black", size = 28), axis.text.x = element_text(face = "italic")) + scale_y_continuous(label=scientific_10, breaks=c(5.7e7, 3.7e7, 1.7e7, 1e6)) +
+theme(axis.text = element_text(size = 28, colour = "black"), axis.title=element_text(size=30, colour = "black"))
+```
+
+**Mean 16S rRNA Copies/mg sample weight**
+```{r load plotting Mean copies for  16S rRNA copies/1 ng DNAdata, echo=FALSE, cache=FALSE}
+
+# Mean 16S rRNA Copies/mg sample weight
+Counts %>%  # the name of the new data frame and the data frame to be summarised
+#  drop_na() %>% # drop rows with missing values
+group_by(`Sample type`, Species) %>%   # the grouping variable
+summarise(`Mean 16S rRNA Copies/mg sample weight` = mean(`16S rRNA Copies/mg sample weight`),  # calculates the mean of each group
+  StD = sd(`16S rRNA Copies/mg sample weight`), # calculates the standard deviation of each group
+  n = n(),  # calculates the sample size per group
+  SE = sd(`16S rRNA Copies/mg sample weight`)/sqrt(n())) -> # calculates the standard error of each group
+Total_mean_copiesDNA_weight  
+
+# Make a mean table   
+Total_mean_copiesDNA_weight %>% # output a table of group means
+kable(., digits = c(0, 1, 1, 1, 0, 1)) %>%
+kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F)
+
+# Create plot
+ggplot(Total_mean_copiesDNA_weight, aes(x = Species, y = `Mean 16S rRNA Copies/mg sample weight`, fill = `Sample type`)) +
+geom_bar(stat = 'identity', position='dodge', colour = "black") + scale_fill_brewer(palette="Dark2") +
+geom_errorbar(aes(ymin = `Mean 16S rRNA Copies/mg sample weight` - SE, ymax = `Mean 16S rRNA Copies/mg sample weight` + SE), width=.2, position=position_dodge(.9))  + 
+ylab("16S rRNA copies/mg sample weight") +
+theme(legend.position="top", legend.text = element_text(colour="black", size = 24), legend.title = element_text(colour="black", size = 28), axis.text.x = element_text(face = "italic")) + scale_y_continuous(label=scientific_10, breaks=c(5.7e7, 3.7e7, 1.7e7, 1e6)) +
+theme(axis.text = element_text(size = 28, colour = "black"), axis.title=element_text(size=30, colour = "black"))
+```

@@ -1,0 +1,909 @@
+---
+title: "Abundance of Gene Homolgs for CAZymes in MAGs"
+subtitle: "CAZymes with SignalP"
+author: "Roey Angel and Nweze Julius"
+date: "`r Sys.Date()`"
+link-citations: yes
+csl: fems-microbiology-ecology.csl
+output:
+  rmarkdown::html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 5
+    keep_md: true
+    number_sections: false
+    highlight: "pygments"
+    theme: "flatly"
+    dev: "png"
+    df_print: "kable"
+    fig_caption: true
+    code_folding: "show"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r libraries, include=F}
+# Load libraries
+#.libPaths(c('~/R/library', .libPaths())) # Uncomment if you have no write access to R path
+
+repo <- "http://cran.wu.ac.at"
+lib.loc <- Sys.getenv("R_LIBS_USER")
+
+update.packages(
+    lib.loc, 
+    repos = repo,
+    ask = FALSE
+)
+
+.cran_libs <- c(
+  "knitr", # A General-Purpose Package for Dynamic Report Generation in R
+  "kableExtra", # Construct Complex Table with 'kable' and Pipe Syntax
+  "rmarkdown", # Dynamic Documents for R
+  "extrafont", # for extra figure fonts
+  "tidyverse", # for dplyr forcats ggplot2 readr tibble
+  "grid", # The Grid Graphics Package
+  "magrittr", # pipes
+  "scales", # Generic plot scaling methods
+  "svglite", # for svg files
+  "vegan",
+  "egg",
+  "data.table",
+  "ggtree",
+  "compare",
+  "ggnewscale",
+  "arsenal",
+  "RColorBrewer",
+  "SciViews",
+  "ggridges",
+  "cowplot",
+  "lubridate",
+  "sunburstR",
+  "forcats",
+  "readODS",
+  "ampvis2",
+  "ggplot2", # for barplot
+  "ggpubr",
+  "car", # Companion to Applied Regression
+  "rcompanion", #Functions to Support Extension Education Program Evaluation
+  "multcomp", # Simultaneous Inference in General Parametric Models 
+  "nlme", # Fit Linear Model Using Generalized Least Squares
+  "ggResidpanel", # Panels and Interactive Versions of Diagnostic Plots using 
+  "lsmeans", # Least-Squares Means
+  "hrbrthemes"
+  
+) 
+
+.inst <- .cran_libs %in% installed.packages()
+if (any(!.inst)) {
+   install.packages(.cran_libs[!.inst],
+                    repos = repo,
+                    lib = lib.loc)
+}
+
+.bioc_libs <- c(
+  #"multtest", #Resampling-based multiple hypothesis testing
+)
+
+.bioc_inst <- .bioc_libs %in% installed.packages()
+if (any(!.bioc_inst)) {
+   if (!requireNamespace("BiocManager", quietly = TRUE))
+   install.packages("BiocManager")
+   BiocManager::install(ask = F, lib = lib.loc)  # upgrade bioC packages
+   BiocManager::install(.bioc_libs[!.bioc_inst], ask = F, lib = lib.loc)
+}
+
+.local_libs <- c()
+
+.inst <- names(.local_libs) %in% installed.packages()
+if (any(!.inst)) {
+   install.packages(paste0("~/R/", .local_libs[!.inst]) ,repos = NULL, type = "source", lib = lib.loc)
+}
+
+.github_libs <- c()
+
+.github_lib_names <- stringr::str_replace(.github_libs, ".*/(.*)$", "\\1")
+
+.github_inst <- .github_lib_names %in% installed.packages()
+if (any(!.github_inst)) {
+  devtools::install_github(.github_libs[!.github_inst],
+                           lib = lib.loc,
+                           dependencies = TRUE)
+}
+
+# Load packages into session, and print package version
+(loaded.libs <- sapply(c(.cran_libs, .bioc_libs, names(.local_libs), .github_lib_names), require, character.only = TRUE))
+if (!all(loaded.libs)) {stop(paste("Package(s):", names(loaded.libs[loaded.libs == FALSE]), "could not be loaded"))}
+sapply(c(.cran_libs, .bioc_libs, names(.local_libs), .github_lib_names), packageVersion)
+```
+
+```{r style settings, include=F}
+options(width = 90, knitr.table.format = "html") 
+opts_chunk$set(
+  warning = FALSE,
+  message = FALSE,
+  cache = TRUE,
+  dev = "svglite",
+  fig.ext = "svg",
+  dpi = 300,
+#  fig.width = 12,
+#  fig.height = 8,
+  cache.path = "CAZymes_loss_cache/",
+  fig.path = "CAzymes_loss_figs/"
+)
+f_name <- "DejaVu Sans" #sub("\\s//", "", f_name)
+f_size <- 14
+font_import(pattern = "DejaVuSans", prompt = FALSE)
+loadfonts() # registers fonts
+theme_set(theme_bw(base_size = f_size, base_family = f_name)) # set theme for plots
+pom4 <- ggpomological:::pomological_palette[c(2, 9, 3, 11, 7, 13, 1, 15, 8, 14, 4, 10, 5, 12, 6, 16)] # set colours 
+colourcode = c("blue", "red", "#999999",  "#56B4E9", "darkorange", "deeppink4",  "darkgreen", "#8b8b00", "#9400d3", "black", "#8B4500", "#FF1493")
+
+
+phylum.colors <- c(Actinobacteriota = "#428953", Bacteroidota = "#CE2929", Desulfobacterota = "#A3DD57", Firmicutes = "#77E599", Myxococcota = "#5675D6", Planctomycetota = "#65ECEF", Proteobacteria = "#FF8B07", Synergistota = "#D0B100", Verrucomicrobiota = "#636363")
+```
+
+[roey.angel@bc.cas.cz](mailto: roey.angel@bc.cas.cz) 
+[julius.nweze@bc.cas.cz](mailto: julius.nweze@bc.cas.cz) 
+
+
+### *E. pulchripes* and *G. connea* *MAGs Analysis*
+
+
+
+# Load datasets
+# CAZymes with and without signal peptides
+```{r load caz data, cache = T}
+# Load the CAZymes
+read_ods("All.CAZymes.CoverM.ods", sheet = "All_CAZymes", col_names = TRUE)  -> 
+ALL
+
+
+
+# Load the taxonomic classification
+read_ods("All.CAZymes.CoverM.ods", sheet = "Phyla", col_names = TRUE)  -> 
+phyla2
+
+
+# Load the substrate grouping
+read_ods("All.CAZymes.CoverM.ods", sheet = "Substrates", col_names = TRUE)  -> 
+Sub
+```
+
+
+*Merging CAZymes with their phyla and corresponding putative substrate*
+```{r load merging caz data, cache = T}
+
+# Join the CAZymes with the taxonomic calssification
+CC <-  ALL %>% right_join(phyla2, by=c("MAGs")) %>% drop_na(Signalp) 
+
+
+
+# Subset only the glycosl hydrolases (GH)
+CC1 <- subset(CC, Code =="GH")
+
+
+
+# Join the glycosl hydrolases with the substrate groupings
+CC2 <- right_join(Sub, CC1, by="Group", multiple = "all")
+
+
+# Write a .csv file for CAZymes merged with phyla 
+write.csv(CC, 'CC.csv')
+
+
+# Write a .csv file for CAZymes merged with substrates 
+write.csv(CC2, 'CC2.csv')
+
+
+
+# Subset the CAZymes belonging to E. pulchripes and write into a csv file
+CEpi <- subset(CC, Epibolus =="Yes")
+CEpi2 <- subset(CC2, Epibolus =="Yes")
+write.csv(CEpi2, "CEpi2.csv")
+
+
+# Subset the CAZymes belonging to G. connexa and write into a csv file
+CGlo <- subset(CC, Glomeris =="Yes")
+CGlo2 <- subset(CC2, Glomeris =="Yes")
+write.csv(CGlo2, "CGlo2.csv")
+```
+
+*Data for ITOL plotting*
+```{r load subset ITOL data, cache = T}
+# Top 50 GHs in metageomes and metatranscripomes
+
+############################################ Metagenomes
+CC2$`DE (TPM)`[ CC2$`DE (TPM)` == 0] <- NA
+CC2$`DG (TPM)`[ CC2$`DG (TPM)` == 0] <- NA
+
+
+# Epibolus
+signalPYes %>%
+filter(!is.na(`DE (TPM)`)) %>%
+group_by(CAZ) %>%
+summarize( Count = n_distinct(MAGs)) %>%
+filter(Count >= 5) %>%
+arrange(desc(Count)) %>%
+slice_head(n = 50) ->
+top50_CAZ
+
+signalPYes %>%
+filter(CAZ %in% top50_CAZ$CAZ) %>%
+group_by(MAGs, Category, Group, CAZ, Epibolus, Glomeris) %>%
+mutate(Sum = sum(`DE (TPM)`)) %>%
+mutate(DE = log10(Sum+1)) ->
+DE_itol
+
+right_join(Sub, CC1, by="Group", multiple = "all") %>%
+subset(Signalp =="Yes") ->
+signalPYes
+
+DE_itol %>%
+#left_join(signalPYes, by = "MAGs",multiple = "all") %>%
+mutate(Category = factor(Category, levels = c("Pectin", "Pectin-hemicellulose", "Hemicellulose", "Pectin-hemicellulose-cellulose", "Hemicellulose-cellulose", "Cellulose", "Fungal cell wall", "Bacterial cell wall", "Algal cell wall", "Starch", "Sucrose", "Trehalose", "Dextran", "Unassigned"))) %>%
+reshape2::dcast(Category + Group + CAZ ~ MAGs + Epibolus, value.var= "DE", fun.aggregate= mean) %>%
+write.csv('Epibolus_ITOL_GH_DE_top50.csv')
+
+
+# Glomeris
+signalPYes %>%
+filter(!is.na(`DG (TPM)`)) %>%
+group_by(CAZ) %>%
+summarize( Count = n_distinct(MAGs)) %>%
+filter(Count >= 5) %>%
+arrange(desc(Count)) %>%
+slice_head(n = 50) ->
+top50_CAZ
+
+signalPYes %>%
+filter(CAZ %in% top50_CAZ$CAZ) %>%
+group_by(MAGs, Category, Group, CAZ, Epibolus, Glomeris) %>%
+mutate(Sum = sum(`DG (TPM)`)) %>%
+mutate(DG = log10(Sum+1)) ->
+DE_itol
+
+right_join(Sub, CC1, by="Group", multiple = "all") %>%
+subset(Signalp =="Yes") ->
+signalPYes
+
+DE_itol %>%
+#left_join(signalPYes, by = "MAGs",multiple = "all") %>%
+mutate(Category = factor(Category, levels = c("Pectin", "Pectin-hemicellulose", "Hemicellulose", "Pectin-hemicellulose-cellulose", "Hemicellulose-cellulose", "Cellulose", "Fungal cell wall", "Bacterial cell wall", "Algal cell wall", "Starch", "Sucrose", "Trehalose", "Dextran", "Unassigned"))) %>%
+reshape2::dcast(Category + Group + CAZ ~ MAGs + Glomeris, value.var= "DG", fun.aggregate= mean) %>%
+write.csv('Glomeris_ITOL_GH_DG_top50.csv')
+
+
+
+
+
+############################################ Metatranscriptomes
+CC2$`RE (TPM)`[ CC2$`RE (TPM)` == 0] <- NA
+CC2$`RG (TPM)`[ CC2$`RG (TPM)` == 0] <- NA
+
+
+# Epibolus
+signalPYes %>%
+filter(!is.na(`RE (TPM)`)) %>%
+group_by(CAZ) %>%
+summarize( Count = n_distinct(MAGs)) %>%
+filter(Count >= 5) %>%
+arrange(desc(Count)) %>%
+slice_head(n = 50) ->
+top50_CAZ
+
+signalPYes %>%
+filter(CAZ %in% top50_CAZ$CAZ) %>%
+group_by(MAGs, Category, Group, CAZ, Epibolus, Glomeris) %>%
+mutate(Sum = sum(`RE (TPM)`)) %>%
+mutate(RE = log10(Sum+1)) ->
+DE_itol
+
+right_join(Sub, CC1, by="Group", multiple = "all") %>%
+subset(Signalp =="Yes") ->
+signalPYes
+
+DE_itol %>%
+#left_join(signalPYes, by = "MAGs",multiple = "all") %>%
+mutate(Category = factor(Category, levels = c("Pectin", "Pectin-hemicellulose", "Hemicellulose", "Pectin-hemicellulose-cellulose", "Hemicellulose-cellulose", "Cellulose", "Fungal cell wall", "Bacterial cell wall", "Algal cell wall", "Starch", "Sucrose", "Trehalose", "Dextran", "Unassigned"))) %>%
+reshape2::dcast(Category + Group + CAZ ~ MAGs + Epibolus, value.var= "RE", fun.aggregate= mean) %>%
+write.csv('Epibolus_ITOL_GH_RE_top50.csv')
+
+
+# Glomeris
+signalPYes %>%
+filter(!is.na(`RG (TPM)`)) %>%
+group_by(CAZ) %>%
+summarize( Count = n_distinct(MAGs)) %>%
+filter(Count >= 5) %>%
+arrange(desc(Count)) %>%
+slice_head(n = 50) ->
+top50_CAZ
+
+signalPYes %>%
+filter(CAZ %in% top50_CAZ$CAZ) %>%
+group_by(MAGs, Category, Group, CAZ, Epibolus, Glomeris) %>%
+mutate(Sum = sum(`RG (TPM)`)) %>%
+mutate(RG = log10(Sum+1)) ->
+DE_itol
+
+right_join(Sub, CC1, by="Group", multiple = "all") %>%
+subset(Signalp =="Yes") ->
+signalPYes
+
+DE_itol %>%
+#left_join(signalPYes, by = "MAGs",multiple = "all") %>%
+mutate(Category = factor(Category, levels = c("Pectin", "Pectin-hemicellulose", "Hemicellulose", "Pectin-hemicellulose-cellulose", "Hemicellulose-cellulose", "Cellulose", "Fungal cell wall", "Bacterial cell wall", "Algal cell wall", "Starch", "Sucrose", "Trehalose", "Dextran", "Unassigned"))) %>%
+reshape2::dcast(Category + Group + CAZ ~ MAGs + Glomeris, value.var= "RG", fun.aggregate= mean) %>%
+write.csv('Glomeris_ITOL_GH_RG_top50.csv')
+```
+
+
+*Number of CAZymes with or without siganalP (in percentage) in metagenomes from both millipede species*
+```{r  CAZ in MG, cache = T}
+
+CEpi$`DE (TPM)`[ CEpi$`DE (TPM)` == 0] <- NA
+
+CGlo$`DG (TPM)`[ CGlo$`DG (TPM)` == 0] <- NA
+
+
+# CAZymes with or without siganalP in metagenomes from  E. pulchripes
+CEpi  %>%
+group_by(Signalp) %>%
+drop_na(`DE (TPM)`) %>%
+summarise(Number = n()) %>%
+mutate(Percent = Number / sum(Number) * 100) %>%
+arrange(Signalp, str_sort(Signalp, numeric = TRUE)) %>%
+arrange(desc(Number)) %>%
+ggplot(aes(x="", y=Number, fill= Signalp)) +
+geom_col(width = 1.5, color = 1.5) +
+coord_polar("y", start=0) + theme(legend.position="top") +
+scale_fill_manual(values = pom4) +
+theme(axis.text = element_blank(), axis.ticks = element_blank(), axis.title = element_blank(), panel.grid = element_blank()) + 
+geom_text(aes(label = paste(Number, " (", round(Percent, 2), "%)") , hjust = 0.25),  position=position_stack(vjust=0.4), size = 7, fontface = "bold") +
+# scale_fill_manual(values = col_vector) +
+theme(plot.title = element_text(hjust = 0.5, vjust = -0.5), legend.text = element_text(size = 26), legend.title = element_text(size = 26)) +
+guides(fill=guide_legend(title.position = "left", title="Secretion signal peptides")) 
+
+
+
+
+
+
+# CAZymes with or without siganalP in G. connexa
+CGlo  %>%
+group_by(Signalp) %>%
+drop_na(`DG (TPM)`) %>%
+summarise(Number = n()) %>%
+mutate(Percent = Number / sum(Number) * 100) %>%
+arrange(Signalp, str_sort(Signalp, numeric = TRUE)) %>%
+arrange(desc(Number)) %>%
+ggplot(aes(x="", y=Number, fill= Signalp)) +
+geom_col(width = 1.5, color = 1.5) +
+coord_polar("y", start=0) + theme(legend.position="top") +
+scale_fill_manual(values = pom4) +
+theme(axis.text = element_blank(), axis.ticks = element_blank(), axis.title = element_blank(), panel.grid = element_blank()) + 
+geom_text(aes(label = paste(Number, " (", round(Percent, 2), "%)") , hjust = 0.25),  position=position_stack(vjust=0.4), size = 8, fontface = "bold") +
+# scale_fill_manual(values = col_vector) +
+theme(plot.title = element_text(hjust = 0.5, vjust = -0.5), legend.text = element_text(size = 26), legend.title = element_text(size = 26)) +
+guides(fill=guide_legend(title.position = "left", title="Secretion signal peptides")) 
+```
+
+
+*Number of CAZymes with or without siganalP (in percentage) in metatranscriptomes from both millipede species*
+```{r  CAZ in MT, cache = T}
+CEpi$`RE (TPM)`[ CEpi$`RE (TPM)` == 0] <- NA
+
+CGlo$`RG (TPM)`[ CGlo$`RG (TPM)` == 0] <- NA
+
+
+# CAZymes with or without siganalP in metatranscriptomes from  E. pulchripes
+CEpi  %>%
+group_by(Signalp) %>%
+drop_na(`RE (TPM)`) %>%
+summarise(Number = n()) %>%
+mutate(Percent = Number / sum(Number) * 100) %>%
+arrange(Signalp, str_sort(Signalp, numeric = TRUE)) %>%
+arrange(desc(Number)) %>%
+ggplot(aes(x="", y=Number, fill= Signalp)) +
+geom_col(width = 1.5, color = 1.5) +
+coord_polar("y", start=0) + theme(legend.position="top") +
+scale_fill_manual(values = pom4) +
+theme(axis.text = element_blank(), axis.ticks = element_blank(), axis.title = element_blank(), panel.grid = element_blank()) + 
+geom_text(aes(label = paste(Number, " (", round(Percent, 2), "%)") , hjust = 0.25),  position=position_stack(vjust=0.4), size = 7, fontface = "bold") +
+# scale_fill_manual(values = col_vector) +
+theme(plot.title = element_text(hjust = 0.5, vjust = -0.5), legend.text = element_text(size = 26), legend.title = element_text(size = 26)) +
+guides(fill=guide_legend(title.position = "left", title="Secretion signal peptides")) 
+
+
+
+
+
+
+# CAZymes with or without siganalP in G. connexa
+CGlo  %>%
+group_by(Signalp) %>%
+drop_na(`RG (TPM)`) %>%
+summarise(Number = n()) %>%
+mutate(Percent = Number / sum(Number) * 100) %>%
+arrange(Signalp, str_sort(Signalp, numeric = TRUE)) %>%
+arrange(desc(Number)) %>%
+ggplot(aes(x="", y=Number, fill= Signalp)) +
+geom_col(width = 1.5, color = 1.5) +
+coord_polar("y", start=0) + theme(legend.position="top") +
+scale_fill_manual(values = pom4) +
+theme(axis.text = element_blank(), axis.ticks = element_blank(), axis.title = element_blank(), panel.grid = element_blank()) + 
+geom_text(aes(label = paste(Number, " (", round(Percent, 2), "%)") , hjust = 0.25),  position=position_stack(vjust=0.4), size = 8, fontface = "bold") +
+# scale_fill_manual(values = col_vector) +
+theme(plot.title = element_text(hjust = 0.5, vjust = -0.5), legend.text = element_text(size = 26), legend.title = element_text(size = 26)) +
+guides(fill=guide_legend(title.position = "left", title="Secretion signal peptides")) 
+```
+
+
+
+
+*Grouping of different types of CAzymes with or without signal peptides in metagenomes*
+```{r  CAZ with or without signal peptides in MG, cache = T}
+
+# Abundance of different types of CAZymes with SignalP in E. pulchripes
+CEpi  %>%
+subset(Signalp =="Yes") %>%
+drop_na(`DE (TPM)`) %>%
+group_by(Code) %>%
+summarise(Number = n()) %>%
+mutate(Percent = Number / sum(Number) * 100) %>%
+arrange(Code, str_sort(Code, numeric = TRUE)) %>%
+arrange(desc(Number))  %>%
+ggplot(aes(x = Code, y = Number, fill = Code)) + xlab("CAZymes with signal peptides in MG") + ylab("Counts") +
+geom_bar(position="dodge", stat = "identity", fill = "#FF8B07", colour = "black") +
+scale_y_continuous(limits = c(0,8000), expand = c(0, 0)) +
+theme(axis.text=element_text(size=24), axis.ticks=element_line(size=0.8), axis.title = element_text(size = 24)) + 
+geom_text(aes(label = paste(Number, " (", round(Percent, 2), "%)")), position = position_dodge(width = 1),  hjust = -0.05,  angle = 90, size = 6, fontface = "bold") +
+theme(legend.position="none") +
+theme(legend.text = element_text(colour="black", size = 24), axis.text=element_text(size=24, colour="black"), axis.title=element_text(size=24), legend.title = element_text(size = 24)) 
+
+
+# Abundance of different types of CAZymes without SignalP in E. pulchripes
+CEpi  %>%
+subset(Signalp =="No") %>%
+drop_na(`DE (TPM)`) %>%
+group_by(Code) %>%
+summarise(Number = n()) %>%
+mutate(Percent = Number / sum(Number) * 100) %>%
+arrange(Code, str_sort(Code, numeric = TRUE)) %>%
+arrange(desc(Number))  %>%
+ggplot(aes(x = Code, y = Number, fill = Code)) + xlab("CAZymes without signal peptides in MG") + ylab("Counts") +
+geom_bar(position="dodge", stat = "identity", fill = "#65ECEF", colour = "black") +
+scale_y_continuous(limits = c(0,10200), expand = c(0, 0)) +
+theme(axis.text=element_text(size=24), axis.ticks=element_line(size=0.8), axis.title = element_text(size = 24)) + 
+geom_text(aes(label = paste(Number, " (", round(Percent, 2), "%)")), position = position_dodge(width = 1),  hjust = -0.05,  angle = 90, size = 6, fontface = "bold") +
+theme(legend.position="none") +
+theme(legend.text = element_text(colour="black", size = 24), axis.text=element_text(size=24, colour="black"), axis.title=element_text(size=24), legend.title = element_text(size = 24)) 
+
+
+
+# Abundance of different types of CAZymes with SignalP in G. connexa
+CGlo  %>%
+subset(Signalp =="Yes") %>%
+drop_na(`DG (TPM)`) %>%
+group_by(Code) %>%
+summarise(Number = n()) %>%
+mutate(Percent = Number / sum(Number) * 100) %>%
+arrange(Code, str_sort(Code, numeric = TRUE)) %>%
+arrange(desc(Number))  %>%
+ggplot(aes(x = Code, y = Number, fill = Code)) + xlab("CAZymes with signal peptides") + ylab("Counts") +
+geom_bar(position="dodge", stat = "identity", fill = "#FF8B07", colour = "black") +
+scale_y_continuous(limits = c(0,350), expand = c(0, 0)) +
+theme(axis.text=element_text(size=24), axis.ticks=element_line(size=0.8), axis.title = element_text(size = 24)) + 
+geom_text(aes(label = paste(Number, " (", round(Percent, 2), "%)")), position = position_dodge(width = 1),  hjust = -0.05,  angle = 90, size = 6, fontface = "bold") +
+theme(legend.position="none") +
+theme(legend.text = element_text(colour="black", size = 24), axis.text=element_text(size=24, colour="black"), axis.title=element_text(size=24), legend.title = element_text(size = 24))
+
+
+# Abundance of different types of CAZymes without SignalP in G. connexa
+CGlo  %>%
+subset(Signalp =="No") %>%
+drop_na(`DG (TPM)`) %>%
+group_by(Code) %>%
+summarise(Number = n()) %>%
+mutate(Percent = Number / sum(Number) * 100) %>%
+arrange(Code, str_sort(Code, numeric = TRUE)) %>%
+arrange(desc(Number)) %>%
+ggplot(aes(x = Code, y = Number, fill = Code)) + xlab("CAZymes without signal peptides") +  ylab("Counts") +
+geom_bar(position="dodge", stat = "identity", fill = "#65ECEF", colour = "black") +
+scale_y_continuous(limits = c(0,1050), expand = c(0, 0))  +
+theme(axis.text=element_text(size=24), axis.ticks=element_line(size=0.8), axis.title = element_text(size = 24)) +
+geom_text(aes(label = paste(Number, " (", round(Percent, 2), "%)")), position = position_dodge(width = 1), hjust = -0.05, angle = 90, size = 6, fontface = "bold") +
+theme(legend.position="none") +
+theme(legend.text = element_text(colour="black", size = 24), axis.text=element_text(size=24, colour="black"), axis.title=element_text(size=24), legend.title = element_text(size = 24)) 
+```
+
+
+
+
+*Grouping of different types of CAzymes with or without signal peptides in metatranscriptomes*
+```{r  CAZ with or without signal peptides in MT, cache = T}
+
+CEpi2$`DE (TPM)`[ CEpi2$`DE (TPM)` == 0] <- NA
+CEpi2$`RE (TPM)`[ CEpi2$`RE (TPM)` == 0] <- NA
+
+
+CGlo2$`DG (TPM)`[ CGlo2$`DG (TPM)` == 0] <- NA
+CGlo2$`RG (TPM)`[ CGlo2$`RG (TPM)` == 0] <- NA
+
+##################################################### Epibolus
+
+
+# Abundance of different types of CAZymes with SignalP in E. pulchripes
+CEpi  %>%
+subset(Signalp =="Yes") %>%
+drop_na(`RE (TPM)`) %>%
+group_by(Code) %>%
+summarise(Number = n()) %>%
+mutate(Percent = Number / sum(Number) * 100) %>%
+arrange(Code, str_sort(Code, numeric = TRUE)) %>%
+arrange(desc(Number))  %>%
+ggplot(aes(x = Code, y = Number, fill = Code)) + xlab("CAZymes with signal peptides in MG") + ylab("Counts") +
+geom_bar(position="dodge", stat = "identity", fill = "#FF8B07", colour = "black") +
+scale_y_continuous(limits = c(0,8000), expand = c(0, 0)) +
+theme(axis.text=element_text(size=24), axis.ticks=element_line(size=0.8), axis.title = element_text(size = 24)) + 
+geom_text(aes(label = paste(Number, " (", round(Percent, 2), "%)")), position = position_dodge(width = 1),  hjust = -0.05,  angle = 90, size = 6, fontface = "bold") +
+theme(legend.position="none") +
+theme(legend.text = element_text(colour="black", size = 24), axis.text=element_text(size=24, colour="black"), axis.title=element_text(size=24), legend.title = element_text(size = 24)) 
+
+
+# Abundance of different types of CAZymes without SignalP in E. pulchripes
+CEpi  %>%
+subset(Signalp =="No") %>%
+drop_na(`RE (TPM)`) %>%
+group_by(Code) %>%
+summarise(Number = n()) %>%
+mutate(Percent = Number / sum(Number) * 100) %>%
+arrange(Code, str_sort(Code, numeric = TRUE)) %>%
+arrange(desc(Number))  %>%
+ggplot(aes(x = Code, y = Number, fill = Code)) + xlab("CAZymes without signal peptides in MG") + ylab("Counts") +
+geom_bar(position="dodge", stat = "identity", fill = "#65ECEF", colour = "black") +
+scale_y_continuous(limits = c(0,10200), expand = c(0, 0)) +
+theme(axis.text=element_text(size=24), axis.ticks=element_line(size=0.8), axis.title = element_text(size = 24)) + 
+geom_text(aes(label = paste(Number, " (", round(Percent, 2), "%)")), position = position_dodge(width = 1),  hjust = -0.05,  angle = 90, size = 6, fontface = "bold") +
+theme(legend.position="none") +
+theme(legend.text = element_text(colour="black", size = 24), axis.text=element_text(size=24, colour="black"), axis.title=element_text(size=24), legend.title = element_text(size = 24)) 
+
+
+
+###################################################### Glomeris
+
+# Abundance of different types of CAZymes with SignalP in G. connexa
+CGlo  %>%
+subset(Signalp =="Yes") %>%
+drop_na(`RG (TPM)`) %>%
+group_by(Code) %>%
+summarise(Number = n()) %>%
+mutate(Percent = Number / sum(Number) * 100) %>%
+arrange(Code, str_sort(Code, numeric = TRUE)) %>%
+arrange(desc(Number))  %>%
+ggplot(aes(x = Code, y = Number, fill = Code)) + xlab("CAZymes with signal peptides") + ylab("Counts") +
+geom_bar(position="dodge", stat = "identity", fill = "#FF8B07", colour = "black") +
+scale_y_continuous(limits = c(0,350), expand = c(0, 0)) +
+theme(axis.text=element_text(size=24), axis.ticks=element_line(size=0.8), axis.title = element_text(size = 24)) + 
+geom_text(aes(label = paste(Number, " (", round(Percent, 2), "%)")), position = position_dodge(width = 1),  hjust = -0.05,  angle = 90, size = 6, fontface = "bold") +
+theme(legend.position="none") +
+theme(legend.text = element_text(colour="black", size = 24), axis.text=element_text(size=24, colour="black"), axis.title=element_text(size=24), legend.title = element_text(size = 24))
+
+
+# Abundance of different types of CAZymes without SignalP in G. connexa
+CGlo  %>%
+subset(Signalp =="No") %>%
+drop_na(`RG (TPM)`) %>%
+group_by(Code) %>%
+summarise(Number = n()) %>%
+mutate(Percent = Number / sum(Number) * 100) %>%
+arrange(Code, str_sort(Code, numeric = TRUE)) %>%
+arrange(desc(Number)) %>%
+ggplot(aes(x = Code, y = Number, fill = Code)) + xlab("CAZymes without signal peptides") +  ylab("Counts") +
+geom_bar(position="dodge", stat = "identity", fill = "#65ECEF", colour = "black") +
+scale_y_continuous(limits = c(0,1050), expand = c(0, 0))  +
+theme(axis.text=element_text(size=24), axis.ticks=element_line(size=0.8), axis.title = element_text(size = 24)) +
+geom_text(aes(label = paste(Number, " (", round(Percent, 2), "%)")), position = position_dodge(width = 1), hjust = -0.05, angle = 90, size = 6, fontface = "bold") +
+theme(legend.position="none") +
+theme(legend.text = element_text(colour="black", size = 24), axis.text=element_text(size=24, colour="black"), axis.title=element_text(size=24), legend.title = element_text(size = 24)) 
+```
+
+
+
+
+
+*Metagenomes: Distribution of GHs with coverages in metageomes in different phya with their putative substrates*
+```{r  Epi coverage, cache = T}
+
+# Epibolus
+
+# GHs distributions in phyla from Epibolus metagenomes
+CEpi2  %>%
+subset(Signalp =="Yes") %>%
+subset(Epibolus =="Yes") %>%
+drop_na(`DE (TPM)`) %>%
+#group_by(MAGs, Category, Phylum, CAZ) %>%
+#summarise(Mean = mean(`DE (TPM)`)) %>%
+group_by(Phylum)  %>%
+summarise(Counts = n()) %>%
+mutate(Percent = Counts / 6199 * 100) %>%
+ggplot(aes(y = Counts, x = Phylum)) + xlab("Phylum") + ylab("GHs abundance in MG") +
+geom_bar(position="dodge", fill = "#FF8B07", colour = "black", stat = "identity") + scale_fill_manual(values = colourcode) +
+theme(axis.text.x = element_text(size=22, hjust = 1, angle = 45, colour = "black"), axis.text = element_text(size=26, hjust = 1, colour = "black"), axis.ticks=element_line(size=0.8), axis.title = element_text(size = 30)) +
+geom_text(aes(label = paste(Counts, " (", round(Percent, 2), "%)")), position = position_dodge(width = 1), hjust = 0.005, vjust = 0.65, angle = 90, size = 5, fontface = "bold") +
+scale_y_continuous(limits = c(0,5500), expand = c(0, 0)) +
+theme(legend.position="top", legend.title = element_text(colour="black", size = 26), legend.text = element_text(colour="black", size = 24))
+
+ggsave("Epi_GHs_distributions_in_phyla_MG.svg",width = 40, height = 30, units = "cm")
+
+
+
+# GHs distributions in family 
+CEpi2  %>%
+subset(Signalp =="Yes") %>%
+subset(Epibolus =="Yes") %>%
+drop_na(`DE (TPM)`) %>%
+#group_by(MAGs, Category, Phylum, CAZ) %>%
+#summarise(Mean = mean(`DE (TPM)`)) %>%
+group_by(Family)  %>%
+summarise(Counts = n()) %>%
+mutate(Percent = Counts / 6199 * 100) %>%
+top_n(10, Counts) %>%
+ggplot(aes(y = Counts, x = Family)) + xlab("Family") + ylab("GHs abundance in MG") +
+geom_bar(position="dodge", fill = "#FF8B07", colour = "black", stat = "identity") + scale_fill_manual(values = colourcode) +
+theme(axis.text.x = element_text(size=22, hjust = 1, angle = 45, colour = "black"), axis.text = element_text(size=26, hjust = 1, colour = "black"), axis.ticks=element_line(size=0.8), axis.title = element_text(size = 30)) +
+geom_text(aes(label = paste(Counts, " (", round(Percent, 2), "%)")), position = position_dodge(width = 1), hjust = 0.005, vjust = 0.65, angle = 90, size = 5, fontface = "bold") +
+scale_y_continuous(limits = c(0,1200), expand = c(0, 0)) +
+theme(legend.position="top", legend.title = element_text(colour="black", size = 26), legend.text = element_text(colour="black", size = 24))
+
+
+
+
+
+# GHs distributions in phyla grouped according to substrates_top3
+CEpi2  %>%
+subset(Signalp =="Yes") %>%
+subset(Epibolus =="Yes") %>%
+drop_na(`DE (TPM)`) %>%
+#group_by(MAGs, Category, Phylum, CAZ) %>%
+#summarise(Mean = mean(`DE (TPM)`)) %>%
+group_by(Phylum, Category)  %>%
+summarise(Counts = n()) %>%
+mutate(Percent = Counts / 6199 * 100) %>%
+group_by(Category) %>%
+top_n(3, Counts) %>%
+ggplot(aes(y = Counts, x = Category, fill = Phylum)) + xlab("Putative substrates") + ylab("GHs abundance in MG") +
+geom_bar(position="dodge", colour = "black", stat = "identity") + scale_fill_manual(values = phylum.colors) +
+theme(axis.text.x = element_text(size=22, hjust = 1, angle = 45, colour = "black"), axis.text = element_text(size=26, hjust = 1, colour = "black"), axis.ticks=element_line(size=0.8), axis.title = element_text(size = 30)) +
+geom_text(aes(label = paste(Counts, " (", round(Percent, 2), "%)")), position = position_dodge(width = 1), hjust = 0.005, vjust = 0.65, angle = 90, size = 5, fontface = "bold") +
+scale_y_continuous(limits = c(0,1300), expand = c(0, 0)) +
+theme(legend.position="top", legend.title = element_text(colour="black", size = 26), legend.text = element_text(colour="black", size = 24)) +
+ guides(fill=guide_legend(nrow=3))
+
+ggsave("Epi_GHs_phyla_grouped_substrates_top3_MG.svg",width = 40, height = 30, units = "cm")
+
+
+
+
+
+
+##################################################### Glomeris
+
+
+
+
+# GHs distributions in phyla
+CGlo2  %>%
+subset(Signalp =="Yes") %>%
+subset(Glomeris =="Yes") %>%
+drop_na(`DG (TPM)`) %>%
+#group_by(MAGs, Category, Phylum, CAZ) %>%
+#summarise(Mean = mean(`DE (TPM)`)) %>%
+group_by(Phylum)  %>%
+summarise(Counts = n()) %>%
+mutate(Percent = Counts / 259 * 100) %>%
+ggplot(aes(y = Counts, x = Phylum)) + xlab("Phylum") + ylab("GHs abundance in MG") +
+geom_bar(position="dodge", fill = "#FF8B07", colour = "black", stat = "identity") + scale_fill_manual(values = colourcode) +
+theme(axis.text.x = element_text(size=22, hjust = 1, angle = 45, colour = "black"), axis.text = element_text(size=26, hjust = 1, colour = "black"), axis.ticks=element_line(size=0.8), axis.title = element_text(size = 30)) +
+geom_text(aes(label = paste(Counts, " (", round(Percent, 2), "%)")), position = position_dodge(width = 1), hjust = 0.005, angle = 90, size = 6, fontface = "bold") +
+scale_y_continuous(limits = c(0,200), expand = c(0, 0)) +
+theme(legend.position="top", legend.title = element_text(colour="black", size = 26), legend.text = element_text(colour="black", size = 24))
+
+ggsave("Glo_GHs_distributions_in_phyla_MG.svg",width = 40, height = 30, units = "cm")
+
+
+
+
+# GHs distributions in Family
+CGlo2  %>%
+subset(Signalp =="Yes") %>%
+subset(Glomeris =="Yes") %>%
+drop_na(`DG (TPM)`) %>%
+#group_by(MAGs, Category, Phylum, CAZ) %>%
+#summarise(Mean = mean(`DE (TPM)`)) %>%
+group_by(Family)  %>%
+summarise(Counts = n()) %>%
+mutate(Percent = Counts / 259 * 100) %>%
+ggplot(aes(y = Counts, x = Family)) + xlab("Family") + ylab("GHs abundance in MG") +
+geom_bar(position="dodge", fill = "#FF8B07", colour = "black", stat = "identity") + scale_fill_manual(values = colourcode) +
+theme(axis.text.x = element_text(size=22, hjust = 1, angle = 60, colour = "black"), axis.text = element_text(size=26, hjust = 1, colour = "black"), axis.ticks=element_line(size=0.8), axis.title = element_text(size = 30)) +
+geom_text(aes(label = paste(Counts, " (", round(Percent, 2), "%)")), position = position_dodge(width = 1), hjust = 0.005, angle = 90, size = 6, fontface = "bold") +
+scale_y_continuous(limits = c(0,70), expand = c(0, 0)) +
+theme(legend.position="top", legend.title = element_text(colour="black", size = 26), legend.text = element_text(colour="black", size = 24))
+
+
+
+
+
+# GHs distributions in phyla grouped according to substrates_top3
+CGlo2  %>%
+subset(Signalp =="Yes") %>%
+subset(Glomeris =="Yes") %>%
+drop_na(`DG (TPM)`) %>%
+#group_by(MAGs, Category, Phylum, CAZ) %>%
+#summarise(Mean = mean(`DE (TPM)`)) %>%
+group_by(Phylum, Category)  %>%
+summarise(Counts = n()) %>%
+mutate(Percent = Counts / 259 * 100) %>%
+group_by(Category) %>%
+top_n(3, Counts) %>%
+ggplot(aes(y = Counts, x = Category, fill = Phylum)) + xlab("Putative substrates") + ylab("GHs abundance in MG") +
+geom_bar(position="dodge", colour = "black", stat = "identity") + scale_fill_manual(values = phylum.colors) +
+theme(axis.text.x = element_text(size=22, hjust = 1, angle = 45, colour = "black"), axis.text = element_text(size=26, hjust = 1, colour = "black"), axis.ticks=element_line(size=0.8), axis.title = element_text(size = 30)) +
+geom_text(aes(label = paste(Counts, " (", round(Percent, 2), "%)")), position = position_dodge(width = 1), hjust = 0.005, vjust = 0.65, angle = 90, size = 5, fontface = "bold") +
+scale_y_continuous(limits = c(0,80), expand = c(0, 0)) +
+theme(legend.position="top", legend.title = element_text(colour="black", size = 26), legend.text = element_text(colour="black", size = 24)) +
+guides(fill=guide_legend(nrow=2))
+
+
+ggsave("Glo_GHs_phyla_grouped_substrates_top3_MG.svg",width = 40, height = 30, units = "cm")
+```
+
+
+
+
+*Metatranscriptomes: Distribution of GHs with coverages in metageomes in different phya with their putative substrates*
+```{r  Epi coverage, cache = T}
+
+######################################################## Epibolus
+
+# GHs distributions in phyla from Epibolus
+CEpi2  %>%
+subset(Signalp =="Yes") %>%
+subset(Epibolus =="Yes") %>%
+drop_na(`RE (TPM)`) %>%
+#group_by(MAGs, Category, Phylum, CAZ) %>%
+#summarise(Mean = mean(`DE (TPM)`)) %>%
+group_by(Phylum)  %>%
+summarise(Counts = n()) %>%
+mutate(Percent = Counts / 6199 * 100) %>%
+ggplot(aes(y = Counts, x = Phylum)) + xlab("Phylum") + ylab("GHs abundance in MT") +
+geom_bar(position="dodge", fill = "#FF8B07", colour = "black", stat = "identity") + scale_fill_manual(values = colourcode) +
+theme(axis.text.x = element_text(size=22, hjust = 1, angle = 45, colour = "black"), axis.text = element_text(size=26, hjust = 1, colour = "black"), axis.ticks=element_line(size=0.8), axis.title = element_text(size = 30)) +
+geom_text(aes(label = paste(Counts, " (", round(Percent, 2), "%)")), position = position_dodge(width = 1), hjust = 0.005, angle = 90, size = 6, fontface = "bold") +
+scale_y_continuous(limits = c(0,6000), expand = c(0, 0)) +
+theme(legend.position="top", legend.title = element_text(colour="black", size = 26), legend.text = element_text(colour="black", size = 24))
+
+ggsave("Epi_GHs_distributions_in_phyla_MT.svg",width = 40, height = 30, units = "cm")
+
+
+
+# GHs distributions in Family
+CEpi2  %>%
+subset(Signalp =="Yes") %>%
+subset(Epibolus =="Yes") %>%
+drop_na(`RE (TPM)`) %>%
+#group_by(MAGs, Category, Phylum, CAZ) %>%
+#summarise(Mean = mean(`DE (TPM)`)) %>%
+group_by(Family)  %>%
+summarise(Counts = n()) %>%
+mutate(Percent = Counts / 6199 * 100) %>%
+top_n(10, Counts) %>%
+ggplot(aes(y = Counts, x = Family)) + xlab("Family") + ylab("GHs abundance in MT") +
+geom_bar(position="dodge", fill = "#FF8B07", colour = "black", stat = "identity") + scale_fill_manual(values = colourcode) +
+theme(axis.text.x = element_text(size=22, hjust = 1, angle = 45, colour = "black"), axis.text = element_text(size=26, hjust = 1, colour = "black"), axis.ticks=element_line(size=0.8), axis.title = element_text(size = 30)) +
+geom_text(aes(label = paste(Counts, " (", round(Percent, 2), "%)")), position = position_dodge(width = 1), hjust = 0.005, angle = 90, size = 6, fontface = "bold") +
+scale_y_continuous(limits = c(0,1500), expand = c(0, 0)) +
+theme(legend.position="top", legend.title = element_text(colour="black", size = 26), legend.text = element_text(colour="black", size = 24))
+
+
+
+
+
+# GHs distributions in phyla grouped according to substrates_top3
+CEpi2  %>%
+subset(Signalp =="Yes") %>%
+subset(Epibolus =="Yes") %>%
+drop_na(`RE (TPM)`) %>%
+#group_by(MAGs, Category, Phylum, CAZ) %>%
+#summarise(Mean = mean(`DE (TPM)`)) %>%
+group_by(Phylum, Category)  %>%
+summarise(Counts = n()) %>%
+mutate(Percent = Counts / 6199 * 100) %>%
+group_by(Category) %>%
+top_n(3, Counts) %>%
+ggplot(aes(y = Counts, x = Category, fill = Phylum)) + xlab("Putative substrates") + ylab("GHs abundance in MT") +
+geom_bar(position="dodge", colour = "black", stat = "identity") + scale_fill_manual(values = phylum.colors) +
+theme(axis.text.x = element_text(size=22, hjust = 1, angle = 45, colour = "black"), axis.text = element_text(size=26, hjust = 1, colour = "black"), axis.ticks=element_line(size=0.8), axis.title = element_text(size = 30)) +
+geom_text(aes(label = paste(Counts, " (", round(Percent, 2), "%)")), position = position_dodge(width = 1), hjust = 0.005, vjust = 0.65, angle = 90, size = 5, fontface = "bold") +
+scale_y_continuous(limits = c(0,1250), expand = c(0, 0)) +
+theme(legend.position="top", legend.title = element_text(colour="black", size = 26), legend.text = element_text(colour="black", size = 24)) +
+guides(fill=guide_legend(nrow=3))
+
+ggsave("Epi_GHs_phyla_grouped_substrates_top3_MT.svg",width = 40, height = 30, units = "cm")
+
+
+
+
+
+
+
+
+
+##################################################### Glomeris
+
+
+# GHs distributions in phyla
+CGlo2  %>%
+subset(Signalp =="Yes") %>%
+subset(Glomeris =="Yes") %>%
+drop_na(`RG (TPM)`) %>%
+#group_by(MAGs, Category, Phylum, CAZ) %>%
+#summarise(Mean = mean(`DE (TPM)`)) %>%
+group_by(Phylum)  %>%
+summarise(Counts = n()) %>%
+mutate(Percent = Counts / 215 * 100) %>%
+ggplot(aes(y = Counts, x = Phylum)) + xlab("Phylum") + ylab("GHs abundance in MT") +
+geom_bar(position="dodge", fill = "#FF8B07", colour = "black", stat = "identity") + scale_fill_manual(values = colourcode) +
+theme(axis.text.x = element_text(size=22, hjust = 1, angle = 45, colour = "black"), axis.text = element_text(size=26, hjust = 1, colour = "black"), axis.ticks=element_line(size=0.8), axis.title = element_text(size = 30)) +
+geom_text(aes(label = paste(Counts, " (", round(Percent, 2), "%)")), position = position_dodge(width = 1), hjust = 0.005, angle = 90, size = 6, fontface = "bold") +
+scale_y_continuous(limits = c(0,155), expand = c(0, 0)) +
+theme(legend.position="top", legend.title = element_text(colour="black", size = 26), legend.text = element_text(colour="black", size = 24))
+
+ggsave("Glo_GHs_distributions_in_phyla_MT.svg",width = 40, height = 30, units = "cm")
+
+
+
+# GHs distributions in Family
+CGlo2  %>%
+subset(Signalp =="Yes") %>%
+subset(Glomeris =="Yes") %>%
+drop_na(`RG (TPM)`) %>%
+#group_by(MAGs, Category, Phylum, CAZ) %>%
+#summarise(Mean = mean(`DE (TPM)`)) %>%
+group_by(Family)  %>%
+summarise(Counts = n()) %>%
+mutate(Percent = Counts / 215 * 100) %>%
+ggplot(aes(y = Counts, x = Family)) + xlab("Family") + ylab("GHs abundance in MT") +
+geom_bar(position="dodge", fill = "#FF8B07", colour = "black", stat = "identity") + scale_fill_manual(values = colourcode) +
+theme(axis.text.x = element_text(size=22, hjust = 1, angle = 55, colour = "black"), axis.text = element_text(size=26, hjust = 1, colour = "black"), axis.ticks=element_line(size=0.8), axis.title = element_text(size = 30)) +
+geom_text(aes(label = paste(Counts, " (", round(Percent, 2), "%)")), position = position_dodge(width = 1), hjust = 0.005, angle = 90, size = 6, fontface = "bold") +
+scale_y_continuous(limits = c(0,60), expand = c(0, 0)) +
+theme(legend.position="top", legend.title = element_text(colour="black", size = 26), legend.text = element_text(colour="black", size = 24))
+
+
+
+
+
+# GHs distributions in phyla grouped according to substrates_top3
+CGlo2  %>%
+subset(Signalp =="Yes") %>%
+subset(Glomeris =="Yes") %>%
+drop_na(`RG (TPM)`) %>%
+#group_by(MAGs, Category, Phylum, CAZ) %>%
+#summarise(Mean = mean(`DE (TPM)`)) %>%
+group_by(Phylum, Category)  %>%
+summarise(Counts = n()) %>%
+mutate(Percent = Counts / 215 * 100) %>%
+group_by(Category) %>%
+top_n(3, Counts) %>%
+ggplot(aes(y = Counts, x = Category, fill = Phylum)) + xlab("Putative substrates") + ylab("GHs abundance in MT") +
+geom_bar(position="dodge", colour = "black", stat = "identity") + scale_fill_manual(values = phylum.colors) +
+theme(axis.text.x = element_text(size=22, hjust = 1, angle = 45, colour = "black"), axis.text = element_text(size=26, hjust = 1, colour = "black"), axis.ticks=element_line(size=0.8), axis.title = element_text(size = 30)) +
+geom_text(aes(label = paste(Counts, " (", round(Percent, 2), "%)")), position = position_dodge(width = 1), hjust = 0.005, vjust = 0.65, angle = 90, size = 5, fontface = "bold") +
+scale_y_continuous(limits = c(0,60), expand = c(0, 0)) +
+theme(legend.position="top", legend.title = element_text(colour="black", size = 26), legend.text = element_text(colour="black", size = 24)) +
+guides(fill=guide_legend(nrow=2))
+
+ggsave("Glo_GHs_phyla_grouped_substrates_top3_MT.svg",width = 40, height = 30, units = "cm")
+```

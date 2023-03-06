@@ -1,0 +1,190 @@
+---
+title: "Known and Novelty of Metagenome-assembled-genomes"
+subtitle: "MAGs"
+author: "Roey Angel and Nweze Julius"
+date: "`r Sys.Date()`"
+link-citations: yes
+csl: fems-microbiology-ecology.csl
+output:
+  rmarkdown::html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 5
+    keep_md: true
+    number_sections: false
+    highlight: "pygments"
+    theme: "flatly"
+    dev: "png"
+    df_print: "kable"
+    fig_caption: true
+    code_folding: "show"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r libraries, include=F}
+# Load libraries
+#.libPaths(c('~/R/library', .libPaths())) # Uncomment if you have no write access to R path
+
+repo <- "http://cran.wu.ac.at"
+lib.loc <- Sys.getenv("R_LIBS_USER")
+
+update.packages(
+    lib.loc, 
+    repos = repo,
+    ask = FALSE
+)
+
+.cran_libs <- c(
+  "knitr", # A General-Purpose Package for Dynamic Report Generation in R
+  "kableExtra", # Construct Complex Table with 'kable' and Pipe Syntax
+  "rmarkdown", # Dynamic Documents for R
+  "extrafont", # for extra figure fonts
+  "tidyverse", # for dplyr forcats ggplot2 readr tibble
+  "grid", # The Grid Graphics Package
+  "magrittr", # pipes
+  "scales", # Generic plot scaling methods
+  "svglite", # for svg files
+  "vegan",
+  "egg",
+  "compare",
+  "ggnewscale",
+  "arsenal",
+  "RColorBrewer",
+  "ggridges",
+  "cowplot",
+  "lubridate",
+  "sunburstR",
+  "forcats",
+  "readODS",
+  "ampvis2",
+  "ggplot2", # for barplot
+  "ggpubr",
+  "car", # Companion to Applied Regression
+  "rcompanion", #Functions to Support Extension Education Program Evaluation
+  "multcomp", # Simultaneous Inference in General Parametric Models 
+  "nlme", # Fit Linear Model Using Generalized Least Squares
+  "ggResidpanel", # Panels and Interactive Versions of Diagnostic Plots using 
+  "lsmeans", # Least-Squares Means
+  "hrbrthemes"
+  
+) 
+
+.inst <- .cran_libs %in% installed.packages()
+if (any(!.inst)) {
+   install.packages(.cran_libs[!.inst],
+                    repos = repo,
+                    lib = lib.loc)
+}
+
+.bioc_libs <- c(
+  #"multtest", #Resampling-based multiple hypothesis testing
+)
+
+.bioc_inst <- .bioc_libs %in% installed.packages()
+if (any(!.bioc_inst)) {
+   if (!requireNamespace("BiocManager", quietly = TRUE))
+   install.packages("BiocManager")
+   BiocManager::install(ask = F, lib = lib.loc)  # upgrade bioC packages
+   BiocManager::install(.bioc_libs[!.bioc_inst], ask = F, lib = lib.loc)
+}
+
+.local_libs <- c()
+
+.inst <- names(.local_libs) %in% installed.packages()
+if (any(!.inst)) {
+   install.packages(paste0("~/R/", .local_libs[!.inst]) ,repos = NULL, type = "source", lib = lib.loc)
+}
+
+.github_libs <- c()
+
+.github_lib_names <- stringr::str_replace(.github_libs, ".*/(.*)$", "\\1")
+
+.github_inst <- .github_lib_names %in% installed.packages()
+if (any(!.github_inst)) {
+  devtools::install_github(.github_libs[!.github_inst],
+                           lib = lib.loc,
+                           dependencies = TRUE)
+}
+
+# Load packages into session, and print package version
+(loaded.libs <- sapply(c(.cran_libs, .bioc_libs, names(.local_libs), .github_lib_names), require, character.only = TRUE))
+if (!all(loaded.libs)) {stop(paste("Package(s):", names(loaded.libs[loaded.libs == FALSE]), "could not be loaded"))}
+sapply(c(.cran_libs, .bioc_libs, names(.local_libs), .github_lib_names), packageVersion)
+```
+
+```{r style settings, include=F}
+options(width = 90, knitr.table.format = "html") 
+opts_chunk$set(
+  warning = FALSE,
+  message = FALSE,
+  cache = TRUE,
+  dev = "svglite",
+  fig.ext = "svg",
+  dpi = 300,
+#  fig.width = 12,
+#  fig.height = 8,
+  cache.path = "MAGs_loss_cache/",
+  fig.path = "MAGs_loss_figs/"
+)
+f_name <- "DejaVu Sans" #sub("\\s//", "", f_name)
+f_size <- 14
+font_import(pattern = "DejaVuSans", prompt = FALSE)
+loadfonts() # registers fonts
+theme_set(theme_bw(base_size = f_size, base_family = f_name)) # set theme for plots
+pom4 <- ggpomological:::pomological_palette[c(2, 9, 3, 11, 7, 13, 1, 15, 8, 14, 4, 10, 5, 12, 6, 16)] # set colours           
+```
+
+[roey.angel@bc.cas.cz](mailto: roey.angel@bc.cas.cz)
+[julius.nweze@bc.cas.cz](mailto: julius.nweze@bc.cas.cz)
+
+
+### *E. pulchripes* and *G. connea* *MAGs Analysis*
+
+**Load data **
+```{r load MAGs data, cache = T}
+# Load data 
+
+read_ods("Taxa-gtdb-tk.ods", sheet = "Sheet1", col_names = TRUE)  -> 
+  MAGs3
+
+# Remove MAGs with relative abundances less than 0.001 from each sample
+MAGs3$`Relative abundance`[ MAGs3$`Relative abundance` < 0.001] <- NA
+```
+
+
+# Plot of annotation Counts of GTDB and SCGs vs taxa level
+```{r load MAGs2 data, cache = T}
+# We calculated the pairwise average nucleotide identity (ANI) for all the hindgut MAGs and clustered them with more than 95% ANI # Novelty is determined:
+# when the taxonomic novelty is determined using RED (relative evolutionary distance) or when the genome is not assigned to closest species as it falls outside its pre-defined ANI radius
+
+MAGs3 %>% 
+group_by(Taxonomy, Phylum) %>%
+summarise(`Number of MAGs` = n()) ->
+df1
+
+# Plot the number of MAGs against the number of known and novel MAGs
+ggplot(df1, aes(x =  Phylum, y = `Number of MAGs`, fill = Taxonomy)) +
+geom_bar(position="dodge", stat = "identity") +  theme_bw() +
+theme(legend.position="top") + scale_fill_brewer(palette="Dark2") +
+theme(legend.text = element_text(colour="black", size = 26), axis.text=element_text(size=30, colour = "black"), axis.title=element_text(size=35), legend.title = element_text(size = 30)) +
+theme(axis.text.x = element_text(angle = 90, vjust = 0.4, hjust = 0.9)) ->
+KnowNovelPhyla
+
+# Known vs novel
+MAGs3 %>% 
+group_by(Taxonomy) %>%
+summarise(`Number of MAGs` = n()) ->
+KN
+
+# Plot Known vs novel at the phylum level
+ggplot(KN, aes(x =  Taxonomy, y = `Number of MAGs`, fill = Taxonomy)) +
+geom_bar(position="dodge", stat = "identity") +  theme_bw() +
+theme(legend.position="none") + scale_fill_brewer(palette="Dark2") +
+theme(legend.text = element_text(colour="black", size = 30), axis.text=element_text(size=26, colour = "black"), axis.title=element_text(size=30), legend.title = element_text(size = 26))  ->
+KnowNovel
+
+# MAke one figure with both figures
+ggarrange(KnowNovel, KnowNovelPhyla, widths = c(3, 6))
+```
+

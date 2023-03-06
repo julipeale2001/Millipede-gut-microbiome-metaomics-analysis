@@ -1,0 +1,572 @@
+---
+title: "Amplicon Sequence Analyses for Hindgut samples (using GDTB tax)"
+subtitle: "Hindgut sample datasets"
+author: "Angel Roey and Nweze Julius"
+date: "`r Sys.Date()`"
+output:
+  rmarkdown::html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 5
+    keep_md: true
+    number_sections: false
+    highlight: "pygments"
+    theme: "flatly"
+    dev: "png"
+    df_print: "kable"
+    fig_caption: true
+    code_folding: "show"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r libraries, include=F}
+# Load libraries
+#.libPaths(c('~/R/library', .libPaths())) # Uncomment if you have no write access to R path
+
+repo <- "http://cran.wu.ac.at"
+lib.loc <- Sys.getenv("R_LIBS_USER")
+
+update.packages(
+    lib.loc, 
+    repos = repo,
+    ask = FALSE
+)
+
+.cran_libs <- c(
+  "phyloseq", # a set of classes and tools to facilitate the import, storage, analysis, and graphical display of microbiome census data
+  "rmarkdown", # Dynamic Documents for R
+  "knitr",  # A General-Purpose Package for Dynamic Report Generation in R
+  "extrafont", # for extra figure fonts
+  "phyloseq.extended", # Various customs functions written to enhance the base functions of phyloseq
+  "dplyr",  # filter and reformat data frames
+  "gridExtra", # To arrange multiple grid-based plots on a page, and draw tables.
+  "knitr", # A General-Purpose Package for Dynamic Report Generation in R
+  "kableExtra", # Construct Complex Table with 'kable' and Pipe Syntax
+  "rmarkdown", # Dynamic Documents for R
+  "extrafont", # for extra figure fonts
+  "tidyverse", # for dplyr forcats ggplot2 readr tibble
+  "grid", # The Grid Graphics Package
+  "magrittr", # pipes
+  "pairwiseAdonis",
+  "scales", # Generic plot scaling methods
+  "svglite", # for svg files
+  "vegan",  # Ordination methods, diversity analysis and other functions for community and vegetation ecologists
+  "car", # Companion to Applied Regression
+  "rcompanion", #Functions to Support Extension Education Program Evaluation
+  "multcomp", # Simultaneous Inference in General Parametric Models 
+  "nlme", # Fit Linear Model Using Generalized Least Squares
+  "ggResidpanel", # Panels and Interactive Versions of Diagnostic Plots using 
+  "lsmeans", # Least-Squares Means
+  "ggplot2",      # graphics
+  "tidyr", # necessary to import the data from Excel file
+  "phyloseqGraphTest", # Provides functions for graph-based multiple-sample testing and visualization of microbiome data
+  "shiny", # makes it easy to build interactive web apps straight from R
+  "miniUI", # Designed to work especially well for creating Shiny Gadgets
+  "caret", # Classification And REgression Training is a set of functions that attempt to streamline the process for creating predictive models
+  "pls", # Partial Least Squares and Principal Component Regression
+  "e1071", # Functions for latent class analysis, short time Fourier transform, fuzzy clustering, support vector machines
+  "randomForest",
+  "ggrepel",
+  "dunn.test",
+  "reshape2",
+  "devtools", 
+  "PMA", 
+#  "structSSI",  
+  "ade4",
+  "igraph", 
+  "ggnetwork", 
+  "intergraph", 
+  "scales",
+  "microbiome",
+  "ggpubr",
+  "RColorBrewer",
+  "microbiomeutilities",
+  "viridis",
+   "readODS",
+  "tibble",
+  "cowplot",
+  "userfriendlyscience",
+ "agricolae", # Statistical Procedures for Agricultural Research
+ # "doParallel", # parallel backend for the foreach/%dopar% function
+ "BiodiversityR", # Package for Community Ecology and Suitability Analysis
+ # "hexbin", # Hexagonal Binning Routines
+ # "ggtern", # An Extension to 'ggplot2', for the Creation of Ternary Diagrams
+#  "MuMIn" # Multi-Model Inference
+  #"stringr",
+ # "mctoolsr"
+"AnnotationDbi", 
+"DESeq2", 
+"GO.db", 
+"impute", 
+"preprocessCore",
+"adespatial"
+) 
+
+.inst <- .cran_libs %in% installed.packages()
+if (any(!.inst)) {
+   install.packages(.cran_libs[!.inst],
+                    repos = repo,
+                    lib = lib.loc)
+}
+
+.bioc_libs <- c(
+  #"multtest", #Resampling-based multiple hypothesis testing
+)
+
+.bioc_inst <- .bioc_libs %in% installed.packages()
+if (any(!.bioc_inst)) {
+   if (!requireNamespace("BiocManager", quietly = TRUE))
+   install.packages("BiocManager")
+   BiocManager::install(ask = F, lib = lib.loc)  # upgrade bioC packages
+   BiocManager::install(.bioc_libs[!.bioc_inst], ask = F, lib = lib.loc)
+}
+
+.local_libs <- c()
+
+.inst <- names(.local_libs) %in% installed.packages()
+if (any(!.inst)) {
+   install.packages(paste0("~/R/", .local_libs[!.inst]) ,repos = NULL, type = "source", lib = lib.loc)
+}
+
+.github_libs <- c()
+
+.github_lib_names <- stringr::str_replace(.github_libs, ".*/(.*)$", "\\1")
+
+.github_inst <- .github_lib_names %in% installed.packages()
+if (any(!.github_inst)) {
+  devtools::install_github(.github_libs[!.github_inst],
+                           lib = lib.loc,
+                           dependencies = TRUE)
+}
+
+
+# Load packages into session, and print package version
+(loaded.libs <- sapply(c(.cran_libs, .bioc_libs, names(.local_libs), .github_lib_names), require, character.only = TRUE))
+if (!all(loaded.libs)) {stop(paste("Package(s):", names(loaded.libs[loaded.libs == FALSE]), "could not be loaded"))}
+sapply(c(.cran_libs, .bioc_libs, names(.local_libs), .github_lib_names), packageVersion)
+set.seed(123456789)
+bootstraps <- 1000
+min_lib_size <- 1000
+```
+
+
+```{r style settings, include=F}
+graphic_device <- "svglite"
+options(width = 90, knitr.table.format = "html") 
+opts_chunk$set(
+  warning = FALSE,
+  message = FALSE,
+  cache = TRUE,
+  dev = graphic_device,
+  fig.ext = "svg",
+  #  fig.width=12,
+  #  fig.height=8,
+  cache.path = "Hindgut_Sequence_cache/",
+  fig.path = "Hindgut_Sequence_figures/"
+)
+
+f_name <- "DejaVu Sans" #sub("\\s//", "", f_name)
+f_size <- 12
+font_import(pattern = "DejaVuSans", prompt = FALSE)
+loadfonts() # registers fonts
+theme_set(theme_bw(base_size = f_size, base_family = f_name))
+pom4 <- ggpomological:::pomological_palette[c(2, 1, 9, 3)]
+pom2 <- c(ggpomological:::pomological_base[[7]], ggpomological:::pomological_palette[[1]]) # devtools::install_github("gadenbuie/ggpomological")
+```
+
+
+#**Read the data and create Epibolus hindgut phyloseq objects**
+```{r load amplicon seq data, cache = T}
+# load your data 
+tsv_table <- read.table("DADA2.seqtab_nochim_decontam.tsv", sep=",", header=T,quote="", comment.char="", stringsAsFactors=F, check.names=FALSE)
+#tax_table <- read_ods("DADA2.taxa_gtdb_decontam.ods", sep=",", header=T,quote="", comment.char="", stringsAsFactors=F, check.names=FALSE)
+tax_table <- read_ods("DADA2.taxa_gtdb_decontam.ods", sheet = "Sheet1", col_names = TRUE)
+sample_table <- read.csv("Metadata.csv",  sep=",", header=T, check.names=FALSE)
+```
+
+
+*Phyloseq objects need to have row.names*
+```{r adding row.names to data, cache = T}
+
+# Define the row names from the ASV column
+row.names(tsv_table) <- tsv_table$ASV
+ tsv_table <- tsv_table %>% dplyr::select(-c(ASV, MC1_S96, BC1_S103, NC1_S110, MC2_S123, BC2_S130, NC2_S137)) 
+
+
+row.names(tax_table) <- tax_table$ASV
+tax_table <- tax_table %>% dplyr::select(-ASV)
+  
+row.names(sample_table) <- sample_table$Sample
+sample_table <- sample_table[!(sample_table$Sample=="MC1_S96" | sample_table$Sample=="BC1_S103" | sample_table$Sample=="NC1_S110" | sample_table$Sample=="MC2_S123" | sample_table$Sample=="BC2_S130" | sample_table$Sample=="NC2_S137"),]
+sample_table <- sample_table %>% dplyr::select(-Sample)
+```
+
+
+*Transform into matrixes tsv and tax tables (sample table can be left as data frame)*
+```{r transformation of data to matrices, cache = T} 
+
+tsv_table <- as.matrix(tsv_table)
+tax_table <- as.matrix(tax_table)
+```
+
+
+*Transform to phyloseq objects*
+```{r pyloseq object, cache = T}
+
+OTU <- otu_table(tsv_table, taxa_are_rows = TRUE)
+TAX = tax_table(tax_table)
+sample = sample_data(sample_table)
+
+carbom <- merge_phyloseq(sample, OTU, TAX)
+carbom
+
+# Visualize data
+
+sample_names(carbom)
+
+rank_names(carbom)
+
+sample_variables(carbom)
+
+summarize_phyloseq(carbom)
+```
+
+
+#**Pre-processing Confirmations**
+*Group according to sample sources (Hingdut)*
+```{r group according to sample sources, cache = T}
+# Epibolus hingdut
+Control <- subset_samples(carbom, sample_names(carbom) == "Hg-E1C_S90" | sample_names(carbom) == "Hg-E1G_S91" | sample_names(carbom) == "Hg-E1H_S92"| sample_names(carbom) == "Hg-G1D_S104" | sample_names(carbom) == "Hg-G1H_S105" | sample_names(carbom) == "Hg-G1i_S106")
+Control
+```
+
+
+*Epibolus hindgut sample dataset summary*
+*As the first analysis, we will look at the distribution of read counts from the hingdut samples*
+```{r Hindgut sample summary, cache = T}
+
+# Make a data frame with a column for the read counts of each Epibolus hingdut sample
+sample_sum_df <- data.frame(sum = sample_sums(Control))
+
+# Histogram of Epibolus hingdut sample read counts
+ggplot(sample_sum_df, aes(x = sum)) + 
+  geom_histogram(color = "black", fill = "indianred", binwidth = 2500) +
+  ggtitle("Distribution of hindgut sample sequencing depth") + 
+  xlab("Read counts") +
+  theme(axis.title.y = element_blank())
+# mean, max and min of Epibolus hingdut sample read counts
+smin <- min(sample_sums(Control))
+print(smin)
+smean <- mean(sample_sums(Control))
+print(smean)
+smax <- max(sample_sums(Control))
+print(smax)
+```
+
+
+*Show available ranks in the hindgut dataset*
+```{r Hindgut available ranks in the dataset, cache = T}
+# Show available ranks in the dataset
+rank_names(Control)
+
+# Create table, number of features for each phyla
+table(tax_table(Control)[, "Phylum"], exclude = NULL)
+```
+
+
+*The following ensures that features with ambiguous phylum annotation are also removed from the hindgut dataset.*
+```{r Hindgut removal of ambiguous phylum annotation, cache = T}
+Control0 <- subset_taxa(Control, !is.na(Phylum) & !Phylum %in% c("", "uncharacterized"))
+```
+
+
+*Exploring the feature prevalence in the hindgut dataset, which we will define here as the number of samples in which a taxa appears at least once.*
+```{r Hindgut exploration of the feature prevalence in the dataset, cache = T}
+# Compute prevalence of each feature, store as data.frame
+prevdf = apply(X = otu_table(Control0),
+                 MARGIN = ifelse(taxa_are_rows(Control0), yes = 1, no = 2),
+                 FUN = function(x){sum(x > 0)})
+
+# Add taxonomy and total read counts to this data.frame
+prevdf = data.frame(Prevalence = prevdf,
+                      TotalAbundance = taxa_sums(Control0),
+                      tax_table(Control0))
+```
+
+
+*Because of the phyla that are comprised of mostly low-prevalence features, let us compute the total and average prevalences of the features in each Epibolus hindgut dataset phylum. Very low numbers should be filtered from the dataset.*
+```{r Hindgut the total and average prevalences of the features in each phylum, cache = T}
+plyr::ddply(prevdf, "Phylum", function(df1){cbind(mean(df1$Prevalence),sum(df1$Prevalence))})
+```
+
+
+*Filter low-prevalent phyla from the hindgut dataset.*
+```{r Hindgut phyla to filter, cache = T}
+# Define phyla to filter
+filterPhyla = c("Bdellovibrionota_C", "Armatimonadota", " Desulfobacterota_B", "Dormibacterota", "Eisenbacteria", " Eremiobacterota", "FCPU426", "Fibrobacterota", "Gemmatimonadota", "Hydrogenedentota", "Nitrospirota", "Patescibacteria", "Sumerlaeota", "")
+# Filter entries with unidentified Phylum.
+Control1 = subset_taxa(Control0, !Phylum %in% filterPhyla)
+Control1
+```
+
+
+
+*Prevalence Filtering in the Epibolus hindgut dataset*
+*First, explore the relationship of prevalence and total read count for each dataset feature.*
+```{r hindgut prevalence filtering, cache = T}
+# Subset to the remaining phyla
+prevdf1 = subset(prevdf, Phylum %in% get_taxa_unique(Control1, "Phylum"))
+ggplot(prevdf1, aes(TotalAbundance, Prevalence / nsamples(Control0),color=Phylum)) +
+ # Include a guess for parameter
+geom_hline(yintercept = 0.05, alpha = 0.5, linetype = 2) + geom_point(size = 2, alpha = 0.7) +
+scale_x_log10() +  xlab("Total Abundance") + ylab("Prevalence [Frac. Samples]") +
+facet_wrap(~Phylum) + theme(legend.position="none")
+```
+
+
+*The following uses five percent (5%) of all samples as the prevalence threshold*
+```{r Hindgut 5% prevalence filtering, cache = T}
+#  Define prevalence threshold as 5% of total samples
+prevalenceThreshold = 0.05 * nsamples(Control0)
+prevalenceThreshold
+
+# Execute prevalence filter, using `prune_taxa()` function
+keepTaxa = rownames(prevdf1)[(prevdf1$Prevalence >= prevalenceThreshold)]
+Control2 = prune_taxa(keepTaxa, Control0)
+
+print(Control2)
+```
+
+
+
+#**Exploring biodiversity: visualization in the hindgut dataset**
+*Normalize number of reads in each hindgut dataset sample using median sequencing depth.*
+```{r Hindgut normalization of reads, cache = T}
+total = median(sample_sums(Control2))
+standf = function(x, t=total) round(t * (x / sum(x)))
+Control2 = transform_sample_counts(Control2, standf)
+
+# Changing order of levels
+sample_data(Control2)$Sample_Species<-factor(sample_data(Control2)$Sample_Species, levels=c("E. pulchripes", "G. connexa "))
+levels(sample_data(Control2)$Sample_Species)
+```
+
+
+*Make the hindgut dataset bar graph nicer by removing OTUs boundaries. This is done by adding ggplot2 modifier.*
+```{r adding ggplot2 modifier hindgut, cache = T}
+plot_bar(Control2, fill = "Phylum") + 
+geom_bar(aes(color=Phylum, fill=Phylum), stat="identity", position="stack") + 
+theme(legend.position="bottom") + facet_wrap(~Sample_Species, scales = "free_x", nrow = 1) 
+```
+
+
+*Let us take ASVs that represent at least 5% of reads in at least one sample. Remember we normalized all the samples to median number of reads (total). We are left with only taxa which makes the reading much more easy.*
+```{r filtering taxa in hindgut, cache = T}
+# Relative abundance
+Control_abund <- filter_taxa(Control2, function(x) sum(x > total*0.05) > 0, TRUE)
+Control_abund
+```
+
+
+#**Taxonomic features**
+
+*Phylum to distributions*
+```{r Checking agglo taxa most abundant ASVs for phylum distribution Epibolus hindgut, cache=FALSE}
+
+Control_glom <- tax_glom(Control1, "Phylum", NArm = TRUE)
+Control_glom_rel <- transform_sample_counts(Control_glom, function(x) x / sum(x)) 
+Control_glom_rel_DF <- psmelt(Control_glom_rel)
+Control_glom_rel_DF$Phylum %<>% as.character()
+
+# group dataframe by Phylum, calculate median rel. abundance
+#detach(package:plyr)    
+#library(dplyr) # OR df1 <- ddply(Control_glom_rel_DF, .(Phylum), summarise, median = median(Abundance))
+Control_glom_rel_DF %>%
+group_by(Phylum) %>%
+summarise(median = median(Abundance)) ->
+medians
+
+# find Phyla whose rel. abund. is less than 0.5%
+Rare_phyla <- medians[medians$median <= 0.02, ]$Phylum
+
+# change their name to "Rares"
+Control_glom_rel_DF[Control_glom_rel_DF$Phylum %in% Rare_phyla, ]$Phylum <- 'Rares'
+# re-group
+Control_glom_rel_DF %>%
+group_by(Sample, Sample.name, Sample_Species, Phylum, Sample.type) %>%
+summarise(Abundance = sum(Abundance)) ->
+Control_glom_rel_DF_2plot
+
+# ab.taxonomy$Freq <- sqrt(ab.taxonomy$Freq)
+Control_glom_rel_DF_2plot$Phylum %<>% sub("unclassified", "Unclassified", .)
+Control_glom_rel_DF_2plot$Phylum %<>% sub("uncultured", "Unclassified", .)
+
+Control_glom_rel_DF_2plot %>% 
+group_by(Sample) %>% 
+filter(Phylum == "Rares") %>% 
+summarise(`Rares (%)` = sum(Abundance * 100)) -> 
+Rares
+# Percentage of reads classified as Rares 
+Rares %>% 
+kable(., digits = 2, caption = "Percentage of reads per sample type classified as Rares:") %>%
+kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F)
+
+
+Control_glom_rel_DF_2plot %>% 
+group_by(Phylum) %>% 
+summarise(sum.Taxa = sum(Abundance)) %>% 
+arrange(desc(sum.Taxa)) -> 
+Taxa_rank
+
+Control_glom_rel_DF_2plot$Phylum %<>% 
+factor(., levels = Taxa_rank$Phylum) %>% 
+fct_relevel(., "Rares", after = Inf)
+  
+p_taxa_box <-
+ggplot(Control_glom_rel_DF_2plot, aes(x = Phylum, y = (Abundance*100), fill = `Sample_Species`)) + scale_y_continuous(limits=c(0,100)) +
+geom_boxplot(aes(group = interaction(Phylum, Sample_Species)), position = position_dodge(width = 0.9), fatten = 1) +
+geom_point(aes(colour = Sample_Species), position = position_jitterdodge(dodge.width = 1), alpha = 1 / 2, stroke = 0, size = 2) + theme_cowplot(font_size = 11, font_family = f_name) +
+labs(x = NULL, y = "Relative abundance (%)") +
+facet_grid(Sample_Species ~ .) +
+background_grid(major = "xy", minor = "none") +
+theme(axis.text.x = element_text(angle = 45, vjust = 0.9, hjust = 0.9), text = element_text(size = 26), axis.text = element_text(size = 26))
+print(p_taxa_box)
+
+
+# Bar plot
+Control_H2 <- ggplot(data = Control_glom_rel_DF_2plot, mapping = aes_string(x = "Sample_Species", y = "Abundance")) + geom_bar(aes(fill = Phylum), stat = "identity", position= "fill") + ylab("Relative Abundance") + 
+theme(legend.text = element_text(colour="black", size = 30), legend.key.size = unit(1, "cm"), axis.text=element_text(size=40, colour="black"), axis.title=element_text(size=50), legend.title = element_text(size = 35), axis.text.x = element_text(face = "italic")) + theme(legend.position = "right") +
+scale_fill_brewer("Phylum", palette = "Dark2") + xlab("Species") +
+theme(legend.key = element_rect(color = NA, fill = NA), legend.key.size = unit(1.5, "cm"), legend.spacing.x = unit(0.1, "cm")) +
+theme(legend.title.align = 0.5)
+Control_H2
+
+# Arrange the plots
+ggarrange(Control_H2, Control_H1, widths = c(0.65, 0.3))
+
+# Showing relative abundance in a tabe
+Control_glom_rel_DF_2plot %>%
+group_by(Sample_Species, Phylum) %>% 
+summarize(`Relative abundance` = mean(Abundance*100)) %>%
+arrange(desc(Sample_Species), desc(`Relative abundance`)) %>%
+kable(., digits = 2, caption = "Relative abundance at phylum level") %>%
+kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F)
+```
+
+
+*Distribution at the genus level*
+```{r At genus level, cache=FALSE}
+# At genus level 
+Control_glom <- tax_glom(Control1, "Genus", NArm = TRUE)
+Control_glom_rel <- transform_sample_counts(Control_glom, function(x) x / sum(x)) 
+Control_glom_rel_DF <- psmelt(Control_glom_rel)
+Control_glom_rel_DF$Genus %<>% as.character()
+
+# group dataframe by Genus, calculate median rel. abundance
+#detach(package:plyr)    
+#library(dplyr) # OR df1 <- ddply(Control_glom_rel_DF, .(Genus), summarise, median = median(Abundance))
+Control_glom_rel_DF %>%
+group_by(Genus) %>%
+summarise(median = median(Abundance)) ->
+medians
+
+# find Phyla whose rel. abund. is less than 0.5%
+Other_phyla <- medians[medians$median <= 0.008, ]$Genus
+
+# change their name to "Rares"
+Control_glom_rel_DF[Control_glom_rel_DF$Genus %in% Other_phyla, ]$Genus <- 'Rares'
+# re-group
+Control_glom_rel_DF %>%
+group_by(Sample, Sample.name, Sample_Species, Genus, Sample.type) %>%
+summarise(Abundance = sum(Abundance)) ->
+Control_glom_rel_DF_2plot
+
+# ab.taxonomy$Freq <- sqrt(ab.taxonomy$Freq)
+Control_glom_rel_DF_2plot$Genus %<>% sub("unclassified", "Unclassified", .)
+Control_glom_rel_DF_2plot$Genus %<>% sub("uncultured", "Unclassified", .)
+set.seed(1)
+Control_glom_rel_DF_2plot %>% 
+group_by(Sample) %>% 
+filter(Genus == "Rares") %>% 
+summarise(`Rares (%)` = sum(Abundance * 100)) -> 
+Rares
+# Percentage of reads classified as Rares 
+Rares %>% 
+kable(., digits = 2, caption = "Percentage of reads per sample type classified as Rares:") %>%
+kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F)
+
+
+Control_glom_rel_DF_2plot %>% 
+group_by(Genus) %>% 
+summarise(sum.Taxa = sum(Abundance)) %>% 
+arrange(desc(sum.Taxa)) -> 
+Taxa_rank
+
+Control_glom_rel_DF_2plot$Genus %<>% 
+factor(., levels = Taxa_rank$Genus) %>% 
+fct_relevel(., "Rares", after = Inf)
+  
+# Bar plot
+Control_genus <- ggplot(data = Control_glom_rel_DF_2plot, mapping = aes_string(x = "Sample_Species", y = "Abundance")) + geom_bar(aes(fill = Genus), stat = "identity", position= "fill") + ylab("Relative Abundance") + 
+theme(legend.text = element_text(colour="black", size = 26), legend.key.size = unit(1.5, "cm"), axis.text=element_text(size=26, colour="black"), axis.title=element_text(size=30), legend.title = element_text(size = 30)) + theme(legend.position = "top", title = "Species", face = "italic") +
+#scale_fill_brewer("Phylum", palette = "Dark2") +
+theme(legend.key = element_rect(color = NA, fill = NA), legend.key.size = unit(0.8, "cm"), legend.spacing.x = unit(0.8, "cm")) + 
+theme(legend.title.align = 0.5)
+Control_genus
+
+# Create the relative abundance table
+Control_glom_rel_DF_2plot %>%
+group_by(Sample_Species, Genus) %>% 
+summarize(`Relative abundance` = mean(Abundance*100)) %>%
+arrange(desc(Sample_Species), desc(`Relative abundance`)) %>%
+kable(., digits = 2, caption = "Relative abundance at genus level") %>%
+kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = F)
+```
+
+
+
+#**Hhindgut β-diversity indices**
+
+*Distance based matrices such as Bray-Curtis, Unifrac are commonly used and visualized using ordination methods.* 
+*Note: Principal Coordinates Analysis (PCoA) *
+```{r  hindgut β-diversity indices, cache = T}
+# rarefy without replacement
+ps.rarefied = rarefy_even_depth(Control2, rngseed=1, sample.size=0.9*min(sample_sums(Control2)), replace=F)
+
+
+# PCoA plot using the unweighted UniFrac as distance
+wunifrac_dist = phyloseq::distance(ps.rarefied, method="bray", weighted=F)
+ordination = ordinate(ps.rarefied, method="PCoA", distance=wunifrac_dist)
+plot_ordination(ps.rarefied, ordination, color="Sample_Species", label = "Sample.name") + theme(aspect.ratio=1) +
+geom_point(size= 20) + 
+theme(plot.title = element_text(hjust = 0, size = 2))+
+scale_colour_manual(values = pom4, name = "") +
+scale_fill_manual(values = pom4, name = "") + theme_bw(base_size = 20) + 
+theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) + 
+geom_line() +
+theme(legend.position="top", legend.text = element_text(colour="black", size = 26), axis.text=element_text(size=30, colour = "black"), axis.title=element_text(size=30)) 
+
+
+# Test whether the samples differ significantly from each other using the permutational ANOVA (PERMANOVA) analysis:
+adonis2(wunifrac_dist ~ sample_data(ps.rarefied)$Sample_Species)
+
+erie_bray <- phyloseq::distance(Control2, method = "bray")
+
+# make a data frame from the sample_data
+
+sampledf <- data.frame(sample_data(Control2))
+
+# Adonis test
+adonis2(erie_bray ~ Sample_Species, data = sampledf)
+    
+# Homogeneity of dispersion test
+beta <- betadisper(erie_bray, sampledf$Sample_Species)
+permutest(beta)
+par(mfrow=c(1,1))
+plot(beta, main="Permanova for beta diversity", col = c("red", "blue", "green", "orange"))
+boxplot(beta, xlab = "", las = 2, cex.axis = 0.8)
+anova(beta)
+permutest(beta)
+TukeyHSD(beta)
+```

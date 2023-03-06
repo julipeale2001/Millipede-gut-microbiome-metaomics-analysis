@@ -1,0 +1,239 @@
+---
+title: "Abundance of Functional Genes in Metagenome and Metatranscriptome Co-assembly Data"
+subtitle: "Gene Abundance"
+author: "Roey Angel and Nweze Julius"
+date: "`r Sys.Date()`"
+link-citations: yes
+csl: fems-microbiology-ecology.csl
+output:
+  rmarkdown::html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 5
+    keep_md: true
+    number_sections: false
+    highlight: "pygments"
+    theme: "flatly"
+    dev: "png"
+    df_print: "kable"
+    fig_caption: true
+    code_folding: "show"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r libraries, include=F}
+# Load libraries
+#.libPaths(c('~/R/library', .libPaths())) # Uncomment if you have no write access to R path
+
+repo <- "http://cran.wu.ac.at"
+lib.loc <- Sys.getenv("R_LIBS_USER")
+
+update.packages(
+    lib.loc, 
+    repos = repo,
+    ask = FALSE
+)
+
+.cran_libs <- c(
+  "knitr", # A General-Purpose Package for Dynamic Report Generation in R
+  "kableExtra", # Construct Complex Table with 'kable' and Pipe Syntax
+  "rmarkdown", # Dynamic Documents for R
+  "extrafont", # for extra figure fonts
+  "tidyverse", # for dplyr forcats ggplot2 readr tibble
+  "grid", # The Grid Graphics Package
+  "magrittr", # pipes
+  "scales", # Generic plot scaling methods
+  "svglite", # for svg files
+  "vegan",
+  "wesanderson",
+  "egg",
+  "data.table",
+  "compare",
+  "ggnewscale",
+  "arsenal",
+  "RColorBrewer",
+  "ggridges",
+  "cowplot",
+  "lubridate",
+  "sunburstR",
+  "forcats",
+  "readODS",
+  "ampvis2",
+  "ggplot2", # for barplot
+  "ggpubr",
+  "car", # Companion to Applied Regression
+  "rcompanion", #Functions to Support Extension Education Program Evaluation
+  "multcomp", # Simultaneous Inference in General Parametric Models 
+  "nlme", # Fit Linear Model Using Generalized Least Squares
+  "ggResidpanel", # Panels and Interactive Versions of Diagnostic Plots using 
+  "lsmeans", # Least-Squares Means
+  "hrbrthemes"
+  
+) 
+
+.inst <- .cran_libs %in% installed.packages()
+if (any(!.inst)) {
+   install.packages(.cran_libs[!.inst],
+                    repos = repo,
+                    lib = lib.loc)
+}
+
+.bioc_libs <- c(
+  #"multtest", #Resampling-based multiple hypothesis testing
+)
+
+.bioc_inst <- .bioc_libs %in% installed.packages()
+if (any(!.bioc_inst)) {
+   if (!requireNamespace("BiocManager", quietly = TRUE))
+   install.packages("BiocManager")
+   BiocManager::install(ask = F, lib = lib.loc)  # upgrade bioC packages
+   BiocManager::install(.bioc_libs[!.bioc_inst], ask = F, lib = lib.loc)
+}
+
+.local_libs <- c()
+
+.inst <- names(.local_libs) %in% installed.packages()
+if (any(!.inst)) {
+   install.packages(paste0("~/R/", .local_libs[!.inst]) ,repos = NULL, type = "source", lib = lib.loc)
+}
+
+.github_libs <- c()
+
+.github_lib_names <- stringr::str_replace(.github_libs, ".*/(.*)$", "\\1")
+
+.github_inst <- .github_lib_names %in% installed.packages()
+if (any(!.github_inst)) {
+  devtools::install_github(.github_libs[!.github_inst],
+                           lib = lib.loc,
+                           dependencies = TRUE)
+}
+
+# Load packages into session, and print package version
+(loaded.libs <- sapply(c(.cran_libs, .bioc_libs, names(.local_libs), .github_lib_names), require, character.only = TRUE))
+if (!all(loaded.libs)) {stop(paste("Package(s):", names(loaded.libs[loaded.libs == FALSE]), "could not be loaded"))}
+sapply(c(.cran_libs, .bioc_libs, names(.local_libs), .github_lib_names), packageVersion)
+```
+
+```{r style settings, include=F}
+options(width = 90, knitr.table.format = "html") 
+opts_chunk$set(
+  warning = FALSE,
+  message = FALSE,
+  cache = TRUE,
+  dev = "svglite",
+  fig.ext = "svg",
+  dpi = 300,
+#  fig.width = 12,
+#  fig.height = 8,
+  cache.path = "Gene_loss_cache/",
+  fig.path = "Gene_loss_figs/"
+)
+f_name <- "DejaVu Sans" #sub("\\s//", "", f_name)
+f_size <- 14
+font_import(pattern = "DejaVuSans", prompt = FALSE)
+loadfonts() # registers fonts
+theme_set(theme_bw(base_size = f_size, base_family = f_name)) # set theme for plots
+pom4 <- ggpomological:::pomological_palette[c(2, 9, 3, 11, 7, 13, 1, 15, 8, 14, 4, 10, 5, 12, 6, 16)] # set colours           
+```
+
+[roey.angel@bc.cas.cz](mailto: roey.angel@bc.cas.cz)
+[julius.nweze@bc.cas.cz](mailto: julius.nweze@bc.cas.cz) 
+
+
+### G. connea* and E. pulchripes 
+
+*Complex carbon degrading genes*
+```{r Complex carbon degrading genes, cache = T}
+# Complex carbon degrading genes
+
+# Load data
+read_ods("All_genes_EpiGlo.ods", sheet = "Complex_carbon_genes", col_names = TRUE)  -> 
+Gene
+
+Gene$Transformed[Gene$Transformed == 0] <- NA
+
+
+Gene  %>%
+#drop_na(Transformed) %>%
+group_by(Species,	Source) %>%
+group_by(Genes, Function) %>%
+mutate(Function = factor(Function, levels = c("Cellulose degrading", "Hemicullulose debranching", "Endohemicellulases", "Other oligosaccharide degrading", "Amylolytic enzymes", "Chitin degrading"))) %>%
+mutate(Genes = factor(Genes, levels = c("Cellobiosidase",	"Cellulase",	"Beta-glucosidase",	"Arabinosidase",	"Beta-glucuronidase",	"Alpha-L-rhamnosidase",	"Mannan-endo-1,4-beta-mannosidase",	"Alpha-D-xyloside-xylohydrolase",	"Beta-xylosidase",	"Beta-mannosidase",	"Beta-galactosidase",	"Alpha-amylase",	"Glucoamylase",	"Pullulanase",	"Isoamylase",	"Chitinase",	"Hexosaminidase"))) %>%
+ggplot(aes(x = Genes, y = Source, size = Transformed)) + 
+geom_point(shape=21, aes(colour = Function)) + scale_size(range = c(15, 25), name="Relative abundance (TPM)") + 
+facet_grid(Species ~.) +
+scale_color_manual(values = c("blue", "#636363", "#CE2929", "#999999", "#E69F00", "#56B4E9", "darkorange", "deeppink4", "red", "darkgreen", "#8b8b00", "#9400d3", "black", "#8B4500", "#FF1493")) + 
+theme(legend.position="top") + 
+theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+theme(legend.text = element_text(colour="black", size = 20,), legend.spacing.x = unit(0.1, 'cm'),  axis.text=element_text(size=18, colour = "black"), axis.title=element_text(size=30, colour = "black"), legend.title = element_text(size = 18, colour = "black")) +
+theme(strip.background = element_rect(fill="lightblue", color="darkblue"), strip.text = element_text(size=16, face="bold", color="darkblue")) + 
+guides(colour = guide_legend(override.aes = list(size=10), nrow = 3))  
+  
+ggsave("Complex_carbon_genes_EpiGlo_MG_MT.svg", width = 50, height = 25, units = "cm")
+```
+
+
+*Acetogenesis, Hydrogenases and Sulfur cycling*
+```{r Acetogenesis, Hydrogenases and Sulfur cycling, cache = T}
+# Load data
+read_ods("All_genes_EpiGlo.ods", sheet = "All_genes_AcetoHydroSulfur", col_names = TRUE)  -> 
+Gene_AHS
+
+# Gene$TPM [Gene$TPM == "0"] <- NA
+Gene_AHS$Transformed[Gene_AHS$Transformed == 0] <- NA
+
+
+Gene_AHS  %>%
+#drop_na(Transformed) %>%
+group_by(Species,	Source) %>%
+group_by(Genes, Function) %>%
+mutate(Function = factor(Function, levels = c("Acetogenesis", "Hydrogenases", "Sulfite reduction", "Sulfate reduction", "Thiosulfate disproportionation"))) %>%
+mutate(Genes = factor(Genes, levels = c("porA", "acs", "acdA","ack", "pta", "fdhF", "fhs","folD", "metF", "acsE", "acsB", "acsD/cdhD", "acsC/cdhE", "acsA/cooS", "fefe-group-a13", "fefe-group-a2", "fefe-group-a4", "fefe-group-b", "fefe-group-c1", "fefe-group-c2", "fefe-group-c3", "nife-group-1", "nife-group-2bc", "nife-group-3abd", "nife-group-3c", "nife-group-4a-g", "nife-group-4hi", "dsrD", "dsrA", "dsrB", "asrA", "asrB", "asrC", "aprA", "sat", "phsA"))) %>%
+  
+ggplot(aes(x = Genes, y = Source, size = Transformed)) + 
+geom_point(shape=21, aes(colour = Function)) + scale_size(range = c(15, 25), name="Log(TPM+1)") + 
+facet_grid(Species ~.) +
+scale_color_manual(values = c("blue", "#636363", "#CE2929", "#999999", "#E69F00", "#56B4E9", "darkorange", "deeppink4", "red", "darkgreen", "#8b8b00", "#9400d3", "black", "#8B4500", "#FF1493")) + 
+theme(legend.position="top") + 
+theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+theme(legend.text = element_text(colour="black", size = 20,), legend.spacing.x = unit(0.1, 'cm'),  axis.text=element_text(size=18, colour = "black"), axis.title=element_text(size=30, colour = "black"), legend.title = element_text(size = 18, colour = "black")) +
+theme(strip.background = element_rect(fill="lightblue", color="darkblue"), strip.text = element_text(size=16, face="bold", color="darkblue")) + 
+guides(colour = guide_legend(override.aes = list(size=10), nrow = 3))  
+  
+ggsave("AcetoHydroSulfur_genes_EpiGlo_MG_MT.svg", width = 50, height = 25, units = "cm")
+```
+
+
+
+
+*Nitrogen cycling*
+```{r Nitrogen cycling, cache = T}
+# Load data
+read_ods("All_genes_EpiGlo.ods", sheet = "Nitrogen_cycling", col_names = TRUE)  -> 
+Gene_NC
+
+
+# Gene$TPM [Gene$TPM == "0"] <- NA
+Gene_NC$Transformed[Gene_NC$Transformed == 0] <- NA
+
+
+Gene_NC  %>%
+#drop_na(Transformed) %>%
+group_by(Species,	Source) %>%
+group_by(Genes, Function) %>%
+mutate(Function = factor(Function, levels = c("Nitrogen fixation", "Nitrite oxidation", "Nitrate reduction", "Nitrite reduction to ammonia", "Nitrite reduction", "Nitric oxide reduction", "Nitrous oxide reduction", "Urea utilisation"))) %>%
+mutate(Genes = factor(Genes, levels = c("anfD", "anfK", "anfG", "nifD", "nifK", "nifH", "nxrA", "nxrB", "napA", "napB", "narG", "narH", "nrfH", "nrfA", "nrfD", "nirB", "nirD", "nirK", "nirS", "norB", "norC", "nosZ", "ureA", "ureB", "ureC"))) %>%
+  
+ggplot(aes(x = Genes, y = Source, size = Transformed)) + 
+geom_point(shape=21, aes(colour = Function)) + scale_size(range = c(10, 25), name="Log(TPM+1)") + 
+facet_grid(Species ~.) +
+scale_color_manual(values = c("blue", "#636363", "#CE2929", "#999999", "#E69F00", "#56B4E9", "darkorange", "deeppink4", "red", "darkgreen", "#8b8b00", "#9400d3", "black", "#8B4500", "#FF1493")) + 
+theme(legend.position="top") + 
+theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+theme(legend.text = element_text(colour="black", size = 20,), legend.spacing.x = unit(0.1, 'cm'),  axis.text=element_text(size=26, colour = "black"), axis.title=element_text(size=35, colour = "black"), legend.title = element_text(size = 18, colour = "black")) +
+theme(strip.background = element_rect(fill="lightblue", color="darkblue"), strip.text = element_text(size=16, face="bold", color="darkblue")) + 
+guides(colour = guide_legend(override.aes = list(size=10), nrow = 6))  
+  
+ggsave("Nitrogen_cycling_genes_coverage_EpiGlo_MG_MT.svg", width = 50, height = 25, units = "cm")
+```
